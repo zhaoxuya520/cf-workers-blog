@@ -2,6 +2,8 @@
 
 本仓库已从 **GitHub Pages / Jekyll 静态博客** 重构为 **Cloudflare Workers 上的动态博客**：
 
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/zhaoxuya520/cf-workers-blog)
+
 - **文章存储**：Cloudflare D1（SQLite）
 - **服务端渲染**：Workers 运行时把 Markdown 渲染为 HTML（禁用 Markdown 内嵌 HTML，降低 XSS 风险）
 - **静态资源**：`public/`（通过 Workers 静态资源能力直接提供 `/assets/*`）
