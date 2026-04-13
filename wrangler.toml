@@ -1,0 +1,20 @@
+name = "cf-workers-blog"
+main = "src/index.ts"
+compatibility_date = "2026-04-13"
+
+# Static assets (CSS/JS/images) served from ./public
+assets = { directory = "./public", binding = "ASSETS" }
+
+[vars]
+BLOG_TITLE = "zhaoxu的个人博客"
+BLOG_DESCRIPTION = "Cloudflare Workers + D1 动态博客"
+AUTHOR_NAME = "zhaoxu"
+PROFILE_BIO = "大家好我 zhaoxu，欢迎交流。"
+GITHUB_URL = "https://github.com/zhaoxuya520"
+EMAIL = "ww7517437@gmail.com"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "blog"
+# 填你自己的 D1 数据库 ID；本仓库内用占位符 UUID 以便本地开发能启动
+database_id = "00000000-0000-0000-0000-000000000000"

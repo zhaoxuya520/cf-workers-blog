@@ -1,0 +1,81 @@
+{
+  "platforms": {
+    "jekyll": {
+      "name": "Jekyll (本地博客)",
+      "enabled": true,
+      "posts_dir": "_posts",
+      "date_format": "YYYY-MM-DD HH:mm:ss +0800",
+      "filename_pattern": "YYYY-MM-DD-{slug}.md",
+      "front_matter": {
+        "layout": "post",
+        "title": "",
+        "date": "",
+        "tags": []
+      },
+      "git_auto_publish": true
+    },
+    "hexo": {
+      "name": "Hexo",
+      "enabled": false,
+      "posts_dir": "source/_posts",
+      "date_format": "YYYY-MM-DD HH:mm:ss",
+      "filename_pattern": "{slug}.md",
+      "front_matter": {
+        "title": "",
+        "date": "",
+        "tags": [],
+        "categories": []
+      }
+    },
+    "hugo": {
+      "name": "Hugo",
+      "enabled": false,
+      "posts_dir": "content/posts",
+      "date_format": "YYYY-MM-DDTHH:mm:ss+08:00",
+      "filename_pattern": "{slug}/index.md",
+      "front_matter": {
+        "title": "",
+        "date": "",
+        "draft": false,
+        "tags": []
+      }
+    },
+    "wordpress": {
+      "name": "WordPress (API)",
+      "enabled": false,
+      "api_url": "",
+      "username": "",
+      "password": ""
+    },
+    "medium": {
+      "name": "Medium (API)",
+      "enabled": false,
+      "api_token": ""
+    },
+    "devto": {
+      "name": "Dev.to (API)",
+      "enabled": false,
+      "api_key": ""
+    }
+  },
+  "editor": {
+    "theme": "dark",
+    "font_size": 14,
+    "auto_save": true,
+    "auto_save_interval": 30000,
+    "markdown_extensions": ["tables", "code_blocks", "task_lists", "emoji"]
+  },
+  "images": {
+    "upload_dir": "assets/uploads",
+    "allowed_types": [".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"],
+    "max_size_mb": 12,
+    "auto_optimize": false,
+    "cdn_prefix": ""
+  },
+  "git": {
+    "auto_commit": true,
+    "commit_message_template": "feat: add post '{title}'",
+    "auto_push": true,
+    "branch": "main"
+  }
+}
