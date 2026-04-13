@@ -82,35 +82,11 @@
 | 工具卡片 | translateY(-2px) | translateY(-4px) + 发光 | 科技感增强 |
 | 按钮 | 背景变色 | translateY(-2px) + 高光 | 更立体 |
 
-### 3. Writer工具通用化
+### 3. 工程迁移（静态 → Workers 动态）
 
-#### 新增配置系统
-创建 `tools/writer_config.json`,支持:
-
-```json
-{
-  "platforms": {
-    "jekyll": { "enabled": true },
-    "hexo": { "enabled": false },
-    "hugo": { "enabled": false },
-    "wordpress": { "enabled": false, "api_url": "" },
-    "medium": { "enabled": false, "api_token": "" },
-    "devto": { "enabled": false, "api_key": "" }
-  }
-}
-```
-
-**功能特性**:
-- ✅ 支持6种博客平台(Jekyll/Hexo/Hugo/WordPress/Medium/Dev.to)
-- ✅ 可配置文章目录、日期格式、文件命名规则
-- ✅ 支持API发布(WordPress/Medium/Dev.to)
-- ✅ 自动保存、图片优化、CDN前缀配置
-- ✅ Git自动提交消息模板
-
-#### Writer UI更新
-- ✅ 同步主站配色系统
-- ✅ 渐变logo + 发光效果
-- ✅ 统一按钮样式
+- ✅ 页面由 Cloudflare Workers 服务端渲染（Markdown → HTML）
+- ✅ 文章数据迁移到 D1（SQLite）
+- ✅ 静态资源统一放到 `public/assets/`，保持原有视觉风格与交互脚本
 
 ### 4. 移动端体验提升
 
@@ -165,8 +141,8 @@
 4. **悬浮反馈**: 所有可交互元素都有明显反馈
 
 ### 功能层面
-1. **Writer通用化**: 支持6种博客平台
-2. **配置化系统**: JSON配置所有参数
+1. **动态博客**: Workers + D1 实现运行时渲染与存储
+2. **配置化系统**: CSS 变量统一主题
 3. **移动端优化**: 完整的响应式适配
 4. **主题一致性**: 全站统一配色系统
 
@@ -176,26 +152,17 @@
 
 ### 博客主站
 无需额外配置,重构已应用到:
-- `assets/css/style.css` - 主样式表
-- `assets/js/main.js` - 交互脚本
-- `_layouts/default.html` - 布局模板
-
-### Writer工具
-1. 修改 `tools/writer_config.json` 启用需要的平台
-2. 运行 `python tools/writer_app.py` 启动服务
-3. 访问 `http://localhost:5173`
+- `public/assets/css/style.css` - 主样式表
+- `public/assets/js/main.js` - 交互脚本
+- `src/index.ts` - 页面模板/路由（SSR）
 
 ---
 
 ## 📁 修改文件清单
 
 ### 核心样式
-- ✅ `assets/css/style.css` - 主样式表(重构配色+动画)
-- ✅ `assets/js/main.js` - 交互脚本(光标跟随+涟漪)
-
-### Writer工具
-- ✅ `tools/writer_config.json` - 配置文件(新增)
-- ✅ `tools/writer/app.css` - Writer样式(同步配色)
+- ✅ `public/assets/css/style.css` - 主样式表(重构配色+动画)
+- ✅ `public/assets/js/main.js` - 交互脚本(光标跟随+涟漪)
 
 ---
 
@@ -208,12 +175,12 @@
 4. 懒加载 - 文章列表图片
 
 ### 功能增强
-1. Writer快捷键 - Ctrl+B/K等
-2. RSS订阅 - jekyll-feed插件
-3. 代码高亮 - 启用语法高亮
+1. RSS订阅 - Workers 生成 RSS/Atom
+2. 代码高亮 - 启用语法高亮
+3. 文章编辑后台 - 简单管理页或接入现有 CMS
 
 ### 安全加固
-1. Writer API鉴权 - Token认证
+1. 管理接口鉴权 - ADMIN_TOKEN
 2. CORS白名单 - 外链域名限制
 3. CSP策略 - 防止XSS
 
@@ -224,7 +191,7 @@
 本次重构实现了:
 - ✅ 科技青春化的视觉风格
 - ✅ 丰富的动画和交互效果
-- ✅ Writer工具的通用化改造
+- ✅ Workers + D1 动态博客架构
 - ✅ 完整的响应式优化
 - ✅ 全站主题一致性
 
