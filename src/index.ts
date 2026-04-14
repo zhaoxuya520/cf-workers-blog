@@ -336,12 +336,12 @@ async function readAdminSession(request: Request, env: Env): Promise<{ username:
 
 function defaultSiteConfig(env: Env): SiteConfig {
   return {
-    blogTitle: (env.BLOG_TITLE || "Blog").trim() || "Blog",
-    blogDescription: (env.BLOG_DESCRIPTION || "").trim(),
-    authorName: (env.AUTHOR_NAME || env.BLOG_TITLE || "Author").trim() || "Author",
-    profileBio: (env.PROFILE_BIO || "你好，欢迎来到我的博客。").trim(),
-    githubUrl: (env.GITHUB_URL || "").trim(),
-    email: (env.EMAIL || "").trim(),
+    blogTitle: (env.BLOG_TITLE || "zhaoxu的个人博客").trim() || "zhaoxu的个人博客",
+    blogDescription: (env.BLOG_DESCRIPTION || "一个玻璃拟态 · 科技风 · 年轻化的静态博客（GitHub Pages / Jekyll）").trim(),
+    authorName: (env.AUTHOR_NAME || "zhaoxu").trim() || "zhaoxu",
+    profileBio: (env.PROFILE_BIO || "啥也不会的混子。").trim(),
+    githubUrl: (env.GITHUB_URL || "https://github.com/zhaoxuya520").trim(),
+    email: (env.EMAIL || "ww7517437@gmail.com").trim(),
   };
 }
 
@@ -388,9 +388,9 @@ function toNavLink(row: NavLinkRow): NavLink {
 function layout(state: SiteState, opts: { title?: string; description?: string; body: string; extraHead?: string }): string {
   const fullTitle = opts.title ? `${opts.title} · ${state.siteConfig.blogTitle}` : state.siteConfig.blogTitle;
   const desc = opts.description || state.siteConfig.blogDescription || "";
-  const footerLinks = state.navLinks
-    .map((link) => `<a class="footer-link" href="${esc(link.href)}"${navLinkAttrs(link)}>${esc(link.label)}</a>`)
-    .join(" · ");
+  const isHome = !opts.title || opts.title === "首页";
+  const isAi = opts.title === "AI工具";
+  const isAbout = opts.title === "关于";
 
   return `<!doctype html>
 <html lang="zh-CN">
@@ -400,6 +400,9 @@ function layout(state: SiteState, opts: { title?: string; description?: string; 
     <meta name="color-scheme" content="dark light" />
     <title>${esc(fullTitle)}</title>
     <meta name="description" content="${esc(desc)}" />
+    <meta property="og:title" content="${esc(fullTitle)}" />
+    <meta property="og:description" content="${esc(desc)}" />
+    <meta property="og:type" content="website" />
     <script>
       (function() {
         var storageKey = "neonlab.theme";
@@ -428,12 +431,143 @@ function layout(state: SiteState, opts: { title?: string; description?: string; 
     <div class="cursor-glow" aria-hidden="true"></div>
     <div class="scroll-progress" aria-hidden="true"></div>
     <div class="bg" aria-hidden="true"></div>
+    <header class="hero-banner">
+    <nav class="navbar">
+      <a class="navbar-left" href="/">
+        <div class="avatar">
+          <img src="/assets/avatar.jpg" alt="头像" onerror="this.style.display='none'">
+        </div>
+        <div class="site-name">
+          <span>${esc(state.siteConfig.blogTitle)}</span>
+          <svg class="dropdown-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="6 9 12 15 18 9"></polyline>
+          </svg>
+        </div>
+      </a>
+
+      <div class="navbar-center" id="site-nav">
+        <a href="/" class="nav-item${isHome ? " active" : ""}">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+            <polyline points="9 22 9 12 15 12 15 22"></polyline>
+          </svg>
+          <span class="nav-text">文章</span>
+        </a>
+        <a href="/ai/" class="nav-item${isAi ? " active" : ""}">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"></path>
+          </svg>
+          <span class="nav-text">AI工具</span>
+        </a>
+        <a href="https://mail.linuxai.de" target="_blank" rel="noopener noreferrer" class="nav-item nav-external">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
+            <polyline points="22,6 12,13 2,6"></polyline>
+          </svg>
+          <span class="nav-text">域名邮箱</span>
+        </a>
+        <a href="https://view.linuxai.de" target="_blank" rel="noopener noreferrer" class="nav-item nav-external">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="3" width="7" height="7"></rect>
+            <rect x="14" y="3" width="7" height="7"></rect>
+            <rect x="14" y="14" width="7" height="7"></rect>
+            <rect x="3" y="14" width="7" height="7"></rect>
+          </svg>
+          <span class="nav-text">导航页</span>
+        </a>
+        <a href="/about/" class="nav-item${isAbout ? " active" : ""}">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="12" y1="16" x2="12" y2="12"></line>
+            <line x1="12" y1="8" x2="12.01" y2="8"></line>
+          </svg>
+          <span class="nav-text">关于</span>
+        </a>
+      </div>
+
+      <div class="navbar-right">
+        <div class="search-box">
+          <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+          <input type="text" class="search-input" placeholder="搜索" id="navSearch">
+        </div>
+        <button class="icon-btn" type="button" data-theme-toggle aria-label="切换主题" title="切换主题">
+          <svg class="theme-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="5"></circle>
+            <line x1="12" y1="1" x2="12" y2="3"></line>
+            <line x1="12" y1="21" x2="12" y2="23"></line>
+            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+            <line x1="1" y1="12" x2="3" y2="12"></line>
+            <line x1="21" y1="12" x2="23" y2="12"></line>
+            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+          </svg>
+          <svg class="theme-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+          </svg>
+        </button>
+        <button class="hamburger" id="hamburger" aria-label="菜单" aria-expanded="false">
+          <span></span>
+          <span></span>
+          <span></span>
+        </button>
+      </div>
+    </nav>
+
+    <div class="mobile-menu" id="mobileMenu">
+      <a href="/" class="nav-item${isHome ? " active" : ""}">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+          <polyline points="9 22 9 12 15 12 15 22"></polyline>
+        </svg>
+        <span class="nav-text">文章</span>
+      </a>
+      <a href="/ai/" class="nav-item${isAi ? " active" : ""}">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3"></circle>
+          <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"></path>
+        </svg>
+        <span class="nav-text">AI工具</span>
+      </a>
+      <a href="https://mail.linuxai.de" target="_blank" rel="noopener noreferrer" class="nav-item nav-external">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
+          <polyline points="22,6 12,13 2,6"></polyline>
+        </svg>
+        <span class="nav-text">域名邮箱</span>
+      </a>
+      <a href="https://view.linuxai.de" target="_blank" rel="noopener noreferrer" class="nav-item nav-external">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="3" width="7" height="7"></rect>
+          <rect x="14" y="3" width="7" height="7"></rect>
+          <rect x="14" y="14" width="7" height="7"></rect>
+          <rect x="3" y="14" width="7" height="7"></rect>
+        </svg>
+        <span class="nav-text">导航页</span>
+      </a>
+      <a href="/about/" class="nav-item${isAbout ? " active" : ""}">
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"></circle>
+          <line x1="12" y1="16" x2="12" y2="12"></line>
+          <line x1="12" y1="8" x2="12.01" y2="8"></line>
+        </svg>
+        <span class="nav-text">关于</span>
+      </a>
+    </div>
+  </header>
     <main class="container content">
       ${opts.body}
     </main>
     <footer class="site-footer">
       <div class="container">
-        <p class="footer-text">© ${new Date().getFullYear()} ${esc(state.siteConfig.blogTitle)}${footerLinks ? ` · ${footerLinks}` : ""}</p>
+        <p class="footer-text">
+          © ${new Date().getFullYear()} ${esc(state.siteConfig.blogTitle)} ·
+          <a class="footer-link" href="https://github.com/zhaoxuya520/web" rel="noopener" target="_blank">GitHub</a>
+        </p>
       </div>
     </footer>
     <button class="back-to-top" aria-label="返回顶部">↑</button>
@@ -730,50 +864,16 @@ async function handleHome(request: Request, env: Env): Promise<Response> {
   if (request.method !== "GET") return json({ ok: false, error: "Method Not Allowed" }, { status: 405 });
 
   const state = await resolveSiteState(env);
-  const url = new URL(request.url);
-  const tagFilter = (url.searchParams.get("tag") || "").trim().toLowerCase();
-  const queryFilter = (url.searchParams.get("q") || "").trim().toLowerCase();
-
   let posts: PostListRow[] = [];
-  let dbError = "";
   try {
     posts = await listPosts(env, 50);
-  } catch (e) {
-    dbError = String(e);
+  } catch {
+    posts = [];
   }
 
-  const visiblePosts = posts.filter((post) => {
-    const tags = parseTags(post.tags_json).map((tag) => tag.toLowerCase());
-    if (tagFilter && !tags.includes(tagFilter)) return false;
-    if (!queryFilter) return true;
-    const haystack = `${post.title}\n${post.excerpt || ""}`.toLowerCase();
-    return haystack.includes(queryFilter) || tags.some((tag) => tag.includes(queryFilter));
-  });
-
-  const toolbar = !dbError
-    ? `<section class="toolbar">
-  <div class="glass panel toolbar-inner">
-    <label class="search">
-      <span class="search-icon">⌕</span>
-      <input id="navSearch" type="text" placeholder="搜索文章标题、摘要或标签" value="${esc(queryFilter)}" />
-    </label>
-    ${renderTagChips(posts, tagFilter)}
-  </div>
-</section>`
-    : "";
-
-  const header = `<header class="page-head">
-  <p class="badge">DYNAMIC BLOG</p>
-  <h1 class="page-title">${esc(state.siteConfig.blogTitle)}</h1>
-  <p class="page-desc">${esc(state.siteConfig.blogDescription)}</p>
-  ${renderQuickLinks(state.navLinks)}
-</header>`;
-
-  const cards = dbError
-    ? `<section class="glass panel"><p class="muted">数据库未配置或不可用。</p><pre class="code">${esc(dbError)}</pre></section>`
-    : visiblePosts.length
-      ? `${header}<section class="grid" id="posts">
-${visiblePosts
+  const body = posts.length
+    ? `<section class="grid">
+${posts
   .map((post) => {
     const tags = parseTags(post.tags_json);
     const tagsAttr = tags.join(",").toLowerCase();
@@ -783,7 +883,7 @@ ${visiblePosts
         : "";
 
     const cover = post.cover_url
-      ? `<div class="card-cover"><img src="${esc(post.cover_url)}" alt="${esc(post.title)}" loading="lazy" decoding="async" fetchpriority="low"></div>`
+      ? `<div class="card-cover"><img src="${esc(post.cover_url)}" alt="${esc(post.title)}" loading="lazy"></div>`
       : "";
 
     return `<article class="card glass panel post-card${post.cover_url ? " has-cover" : ""}"
@@ -804,13 +904,17 @@ ${visiblePosts
   })
   .join("\n")}
 </section>`
-      : `${header}<section class="footer-note"><div class="glass panel"><p>还没有文章，现在就去后台写第一篇吧。</p><p><a class="btn primary" href="/admin">打开后台</a></p></div></section>`;
+    : `<section class="footer-note">
+  <div class="glass panel">
+    <p>还没有文章。用本地 Writer 写一篇并发布后，这里会自动更新。</p>
+  </div>
+</section>`;
 
   return html(
     layout(state, {
       title: "首页",
       description: state.siteConfig.blogDescription,
-      body: `${header}${toolbar}${dbError ? cards : cards.replace(header, "")}`,
+      body,
     })
   );
 }
@@ -842,6 +946,34 @@ async function handlePost(request: Request, env: Env, slug: string): Promise<Res
   const contentHtml = md.render(post.content_md || "");
   const words = stripHtml(contentHtml).trim().split(/\s+/).filter(Boolean).length;
   const readingTime = Math.max(1, Math.floor(words / 300) + 1);
+  const commentsBlock = `<section class="comments" aria-label="评论">
+    <h2 class="comments-title">评论</h2>
+    <div class="comments-body">
+      <script>
+        window.__giscus = {
+          light: "light",
+          dark: "dark_dimmed"
+        };
+        (function() {
+          var theme = document.documentElement.dataset.theme;
+          var giscusTheme = theme === 'light' ? window.__giscus.light : window.__giscus.dark;
+          document.write('<script src="https://giscus.app/client.js" ' +
+            'data-repo="zhaoxuya520/web" ' +
+            'data-repo-id="R_kgDOQqZqlw" ' +
+            'data-category="Announcements" ' +
+            'data-category-id="DIC_kwDOQqZql84Cz9Un" ' +
+            'data-mapping="pathname" ' +
+            'data-strict="1" ' +
+            'data-reactions-enabled="1" ' +
+            'data-emit-metadata="0" ' +
+            'data-input-position="top" ' +
+            'data-theme="' + giscusTheme + '" ' +
+            'data-lang="zh-CN" ' +
+            'crossorigin="anonymous" async><\\/script>');
+        })();
+      </script>
+    </div>
+  </section>`;
 
   return html(
     layout(state, {
@@ -859,6 +991,7 @@ async function handlePost(request: Request, env: Env, slug: string): Promise<Res
     <h1 class="title">${esc(post.title)}</h1>
   </header>
   <div class="prose">${contentHtml}</div>
+  ${commentsBlock}
   <footer class="post-foot"><a class="link" href="/">← 返回列表</a></footer>
 </article>`,
     })
@@ -869,8 +1002,6 @@ async function handleAbout(request: Request, env: Env): Promise<Response> {
   if (request.method !== "GET") return json({ ok: false, error: "Method Not Allowed" }, { status: 405 });
 
   const state = await resolveSiteState(env);
-  const bioHtml = md.render(state.siteConfig.profileBio || "你好，欢迎来到我的博客。");
-
   const links = [
     state.siteConfig.githubUrl
       ? `<a class="about-link icon-link" href="${esc(state.siteConfig.githubUrl)}" target="_blank" rel="noopener noreferrer"><span class="about-link-text">GitHub</span></a>`
@@ -882,16 +1013,11 @@ async function handleAbout(request: Request, env: Env): Promise<Response> {
     .filter(Boolean)
     .join("");
 
-  const body = `<header class="page-head">
-  <h1 class="page-title">关于</h1>
-  <p class="page-desc">${esc(state.siteConfig.blogDescription)}</p>
-</header>
-
-<section class="about-layout">
+  const body = `<section class="about-layout">
   <aside class="about-side">
     <div class="glass panel about-side-card">
       <div class="about-avatar-wrap">
-        <img class="about-avatar" src="/assets/avatar.webp" alt="${esc(state.siteConfig.authorName)}的头像" loading="lazy" decoding="async" />
+        <img class="about-avatar" src="/assets/avatar.jpg" alt="${esc(state.siteConfig.authorName)}的头像" />
       </div>
       <div class="about-name-pill">${esc(state.siteConfig.authorName)}</div>
       <div class="about-links" aria-label="联系方式">${links}</div>
@@ -899,8 +1025,26 @@ async function handleAbout(request: Request, env: Env): Promise<Response> {
   </aside>
   <section class="about-main glass panel">
     <div class="about-section">
-      <h2 class="about-h2">个人资料</h2>
-      <div class="about-content">${bioHtml}</div>
+      <h2 class="about-h2">关于我：</h2>
+      <div class="about-content"><p>${esc(state.siteConfig.profileBio)}</p></div>
+    </div>
+    <div class="about-section">
+      <h2 class="about-h2">技能：</h2>
+      <div class="skill-tags-wrapper">
+        <span class="skill-tag">HTML / CSS / JavaScript</span>
+        <span class="skill-tag">React / Node.js</span>
+        <span class="skill-tag">Python</span>
+        <span class="skill-tag">C 语言</span>
+        <span class="skill-tag">Java</span>
+      </div>
+    </div>
+    <div class="about-section">
+      <h2 class="about-h2">项目：</h2>
+      <ul class="project-list">
+        <li>个人作品集（Portfolio）</li>
+        <li>AI 聊天助手</li>
+        <li>开源工具</li>
+      </ul>
     </div>
   </section>
 </section>`;
