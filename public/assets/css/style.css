@@ -1359,6 +1359,345 @@ a{color:inherit}
   *{scroll-behavior:auto !important; transition:none !important; animation: none !important}
 }
 
+/* Admin console */
+.admin-auth-panel,
+.admin-panel{
+  padding:18px;
+}
+
+.admin-grid{
+  display:grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(320px, .9fr);
+  gap:18px;
+  margin:18px 0;
+}
+
+.admin-page-head{
+  display:flex;
+  gap:16px;
+  align-items:flex-end;
+  justify-content:space-between;
+  flex-wrap:wrap;
+}
+
+.admin-head-actions{
+  display:flex;
+  gap:10px;
+  flex-wrap:wrap;
+}
+
+.admin-posts-panel{
+  padding:18px;
+  margin-bottom:24px;
+}
+
+.admin-auth-row,
+.admin-panel-head,
+.admin-inline-actions,
+.admin-nav-row{
+  display:flex;
+  gap:12px;
+  align-items:center;
+  justify-content:space-between;
+  flex-wrap:wrap;
+}
+
+.admin-panel-title{
+  margin:0;
+  font-size:20px;
+}
+
+.admin-panel-desc{
+  margin:6px 0 0;
+  color:var(--muted);
+  font-size:13px;
+  line-height:1.6;
+}
+
+.admin-form{
+  display:grid;
+  gap:14px;
+}
+
+.admin-field{
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+}
+
+.admin-field-grow{
+  flex:1 1 380px;
+}
+
+.admin-field-small{
+  width:120px;
+}
+
+.admin-label{
+  font-size:13px;
+  color:var(--muted);
+}
+
+.admin-field input,
+.admin-field textarea{
+  width:100%;
+  border-radius:16px;
+  border:1px solid var(--stroke);
+  background:rgba(0,0,0,.10);
+  color:var(--text);
+  padding:10px 12px;
+  outline:none;
+  font:inherit;
+}
+
+:root[data-theme="light"] .admin-field input,
+:root[data-theme="light"] .admin-field textarea{
+  background:rgba(255,255,255,.45);
+}
+
+.admin-field textarea{
+  resize:vertical;
+  min-height:84px;
+}
+
+.admin-two-col{
+  display:grid;
+  grid-template-columns:repeat(2, minmax(0, 1fr));
+  gap:12px;
+}
+
+.admin-status{
+  margin:12px 0 0;
+  font-size:13px;
+  color:var(--muted);
+}
+
+.admin-status[data-kind="success"]{
+  color:var(--accent1);
+}
+
+.admin-status[data-kind="error"]{
+  color:var(--accent2);
+}
+
+.admin-nav-list,
+.admin-post-list{
+  display:grid;
+  gap:12px;
+}
+
+.admin-nav-item,
+.admin-post-item,
+.admin-empty{
+  border:1px solid var(--stroke);
+  background:rgba(255,255,255,.04);
+  border-radius:16px;
+}
+
+.admin-nav-item{
+  padding:14px;
+}
+
+.admin-checkbox{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  color:var(--muted);
+  font-size:13px;
+}
+
+.admin-checkbox input{
+  accent-color:var(--accent1);
+}
+
+.admin-posts-layout{
+  display:grid;
+  grid-template-columns:300px minmax(0, 1fr);
+  gap:18px;
+}
+
+.admin-login-shell{
+  min-height:calc(100vh - 120px);
+  display:flex;
+  align-items:center;
+}
+
+.admin-login-layout{
+  width:100%;
+  display:grid;
+  grid-template-columns:minmax(0, 1.15fr) minmax(380px, .85fr);
+  gap:22px;
+  align-items:stretch;
+}
+
+.admin-login-story,
+.admin-login-card{
+  position:relative;
+  overflow:hidden;
+  padding:28px;
+}
+
+.admin-login-story::before,
+.admin-login-card::before{
+  content:"";
+  position:absolute;
+  inset:-20%;
+  background:
+    radial-gradient(circle at 20% 20%, rgba(6,214,160,.16), transparent 28%),
+    radial-gradient(circle at 80% 15%, rgba(17,138,178,.12), transparent 24%),
+    radial-gradient(circle at 70% 75%, rgba(239,71,111,.10), transparent 26%);
+  pointer-events:none;
+  animation: adminFloat 14s ease-in-out infinite;
+}
+
+.admin-login-title{
+  max-width:10ch;
+}
+
+.admin-login-glow{
+  position:absolute;
+  right:-40px;
+  top:-40px;
+  width:220px;
+  height:220px;
+  border-radius:50%;
+  background:radial-gradient(circle, rgba(255,209,102,.16), transparent 70%);
+  filter:blur(8px);
+  pointer-events:none;
+}
+
+.admin-login-metrics{
+  position:relative;
+  display:grid;
+  grid-template-columns:repeat(3, minmax(0, 1fr));
+  gap:12px;
+  margin-top:28px;
+}
+
+.admin-login-metric{
+  padding:14px;
+  border-radius:16px;
+  border:1px solid var(--stroke);
+  background:rgba(255,255,255,.05);
+  backdrop-filter:blur(8px);
+  animation: fadeInUp .55s ease backwards;
+}
+
+.admin-login-metric:nth-child(2){animation-delay:.08s}
+.admin-login-metric:nth-child(3){animation-delay:.16s}
+
+.admin-login-metric-value{
+  display:block;
+  font-family:var(--mono);
+  font-size:14px;
+  color:var(--text);
+  margin-bottom:8px;
+}
+
+.admin-login-metric-label{
+  display:block;
+  font-size:13px;
+  line-height:1.6;
+  color:var(--muted);
+}
+
+.admin-login-card{
+  transform-style:preserve-3d;
+  transition:transform .18s ease, box-shadow .18s ease;
+}
+
+.admin-login-card-head{
+  position:relative;
+  margin-bottom:18px;
+}
+
+.admin-login-form{
+  position:relative;
+}
+
+.admin-login-submit{
+  width:100%;
+  min-height:48px;
+}
+
+.admin-login-footer{
+  margin-top:18px;
+  display:flex;
+  justify-content:flex-start;
+}
+
+@keyframes adminFloat{
+  0%{transform:translate3d(0,0,0) scale(1)}
+  50%{transform:translate3d(2%, 3%, 0) scale(1.04)}
+  100%{transform:translate3d(0,0,0) scale(1)}
+}
+
+.admin-post-item{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+  align-items:flex-start;
+  width:100%;
+  padding:12px 14px;
+  color:var(--text);
+  cursor:pointer;
+  text-align:left;
+  transition:transform .12s ease, border-color .12s ease, background .12s ease;
+}
+
+.admin-post-item:hover,
+.admin-post-item.is-active{
+  transform:translateY(-1px);
+  border-color:rgba(6,214,160,.35);
+  background:rgba(255,255,255,.08);
+}
+
+.admin-post-item-title{
+  font-weight:600;
+  line-height:1.5;
+}
+
+.admin-post-item-meta{
+  font-size:12px;
+  color:var(--muted);
+}
+
+.admin-empty{
+  padding:16px;
+  color:var(--muted);
+  line-height:1.7;
+}
+
+.admin-danger{
+  border-color:rgba(239,71,111,.26);
+  color:#ffd5de;
+}
+
+.admin-danger:hover{
+  background:rgba(239,71,111,.12);
+}
+
+.admin-actions-compact{
+  margin-top:12px;
+}
+
+@media (max-width: 980px){
+  .admin-grid,
+  .admin-posts-layout,
+  .admin-two-col,
+  .admin-login-layout{
+    grid-template-columns:1fr;
+  }
+
+  .admin-field-small{
+    width:100%;
+  }
+
+  .admin-login-metrics{
+    grid-template-columns:1fr;
+  }
+}
+
 /* 科技青春动画效果 */
 @keyframes fadeInUp {
   from {

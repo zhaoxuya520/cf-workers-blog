@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark light" />
+    <title>博客后台</title>
+    <script>
+      (function () {
+        var storageKey = "neonlab.theme";
+        try {
+          var saved = localStorage.getItem(storageKey);
+          if (saved === "light" || saved === "dark") {
+            document.documentElement.dataset.theme = saved;
+          } else if (window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches) {
+            document.documentElement.dataset.theme = "light";
+          } else {
+            document.documentElement.dataset.theme = "dark";
+          }
+        } catch (error) {
+          document.documentElement.dataset.theme = "dark";
+        }
+      })();
+    </script>
+    <link rel="stylesheet" href="/assets/css/style.css" />
+    <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml" />
+  </head>
+  <body>
+    <canvas id="stars-canvas" aria-hidden="true"></canvas>
+    <div class="cursor-glow" aria-hidden="true"></div>
+    <div class="scroll-progress" aria-hidden="true"></div>
+    <div class="bg" aria-hidden="true"></div>
+
+    <main class="container content">
+      <header class="page-head">
+        <p class="badge">ADMIN CONSOLE</p>
+        <div class="admin-page-head">
+          <div>
+            <h1 class="page-title">博客后台</h1>
+            <p class="page-desc">在一个页面里管理文章、个人资料和导航链接。</p>
+          </div>
+          <div class="admin-head-actions">
+            <a class="btn ghost" href="/" target="_blank" rel="noopener noreferrer">查看前台</a>
+            <button id="refreshButton" class="btn ghost" type="button">刷新数据</button>
+            <button id="logoutButton" class="btn admin-danger" type="button">退出登录</button>
+          </div>
+        </div>
+      </header>
+
+      <section class="glass panel admin-auth-panel">
+        <p id="adminStatus" class="admin-status">正在同步后台数据...</p>
+      </section>
+
+      <section class="admin-grid">
+        <section class="glass panel admin-panel">
+          <div class="admin-panel-head">
+            <div>
+              <h2 class="admin-panel-title">站点设置</h2>
+              <p class="admin-panel-desc">修改博客标题、简介和个人资料。</p>
+            </div>
+          </div>
+          <form id="siteConfigForm" class="admin-form">
+            <label class="admin-field">
+              <span class="admin-label">博客标题</span>
+              <input id="blogTitle" type="text" maxlength="120" />
+            </label>
+            <label class="admin-field">
+              <span class="admin-label">博客简介</span>
+              <textarea id="blogDescription" rows="3"></textarea>
+            </label>
+            <label class="admin-field">
+              <span class="admin-label">作者名</span>
+              <input id="authorName" type="text" maxlength="80" />
+            </label>
+            <label class="admin-field">
+              <span class="admin-label">GitHub 链接</span>
+              <input id="githubUrl" type="url" placeholder="https://github.com/..." />
+            </label>
+            <label class="admin-field">
+              <span class="admin-label">邮箱</span>
+              <input id="email" type="email" placeholder="name@example.com" />
+            </label>
+            <label class="admin-field">
+              <span class="admin-label">个人资料（支持 Markdown）</span>
+              <textarea id="profileBio" rows="8"></textarea>
+            </label>
+            <div class="admin-inline-actions">
+              <button class="btn primary" type="submit">保存站点设置</button>
+            </div>
+          </form>
+        </section>
+
+        <section class="glass panel admin-panel">
+          <div class="admin-panel-head">
+            <div>
+              <h2 class="admin-panel-title">导航管理</h2>
+              <p class="admin-panel-desc">新增、排序、编辑页脚快捷入口。</p>
+            </div>
+            <button id="addNavButton" class="btn ghost" type="button">新增导航</button>
+          </div>
+          <div id="navList" class="admin-nav-list"></div>
+        </section>
+      </section>
+
+      <section class="glass panel admin-panel admin-posts-panel">
+        <div class="admin-panel-head">
+          <div>
+            <h2 class="admin-panel-title">文章管理</h2>
+            <p class="admin-panel-desc">新建、编辑、删除博客文章。</p>
+          </div>
+          <button id="newPostButton" class="btn primary" type="button">新建文章</button>
+        </div>
+
+        <div class="admin-posts-layout">
+          <aside class="admin-posts-sidebar">
+            <div id="postList" class="admin-post-list"></div>
+          </aside>
+
+          <section class="admin-post-editor">
+            <form id="postForm" class="admin-form">
+              <div class="admin-two-col">
+                <label class="admin-field">
+                  <span class="admin-label">标题</span>
+                  <input id="postTitle" type="text" maxlength="120" />
+                </label>
+                <label class="admin-field">
+                  <span class="admin-label">Slug</span>
+                  <input id="postSlug" type="text" maxlength="160" />
+                </label>
+              </div>
+
+              <label class="admin-field">
+                <span class="admin-label">摘要</span>
+                <textarea id="postExcerpt" rows="3"></textarea>
+              </label>
+
+              <div class="admin-two-col">
+                <label class="admin-field">
+                  <span class="admin-label">标签（逗号分隔）</span>
+                  <input id="postTags" type="text" placeholder="Cloudflare, Workers, Blog" />
+                </label>
+                <label class="admin-field">
+                  <span class="admin-label">封面图 URL</span>
+                  <input id="postCoverUrl" type="url" placeholder="https://example.com/cover.png" />
+                </label>
+              </div>
+
+              <label class="admin-field">
+                <span class="admin-label">Markdown 正文</span>
+                <textarea id="postContent" rows="18"></textarea>
+              </label>
+
+              <div class="admin-inline-actions">
+                <button class="btn primary" type="submit">保存文章</button>
+                <button id="previewPostButton" class="btn ghost" type="button">预览文章</button>
+                <button id="deletePostButton" class="btn admin-danger" type="button">删除文章</button>
+              </div>
+            </form>
+          </section>
+        </div>
+      </section>
+    </main>
+
+    <button class="back-to-top" aria-label="返回顶部">↑</button>
+    <div class="lightbox" aria-hidden="true">
+      <button class="lightbox-close" aria-label="关闭">×</button>
+      <img src="" alt="" />
+    </div>
+
+    <script src="/assets/js/main.js" defer></script>
+    <script src="/assets/js/admin.js" defer></script>
+  </body>
+</html>

@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark light" />
+    <title>后台登录</title>
+    <script>
+      (function () {
+        var storageKey = "neonlab.theme";
+        try {
+          var saved = localStorage.getItem(storageKey);
+          if (saved === "light" || saved === "dark") {
+            document.documentElement.dataset.theme = saved;
+          } else if (window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches) {
+            document.documentElement.dataset.theme = "light";
+          } else {
+            document.documentElement.dataset.theme = "dark";
+          }
+        } catch (error) {
+          document.documentElement.dataset.theme = "dark";
+        }
+      })();
+    </script>
+    <link rel="stylesheet" href="/assets/css/style.css" />
+    <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml" />
+  </head>
+  <body>
+    <canvas id="stars-canvas" aria-hidden="true"></canvas>
+    <div class="cursor-glow" aria-hidden="true"></div>
+    <div class="scroll-progress" aria-hidden="true"></div>
+    <div class="bg" aria-hidden="true"></div>
+
+    <main class="container content admin-login-shell">
+      <section class="admin-login-layout">
+        <article class="glass panel admin-login-story">
+          <p class="badge">CONTROL ACCESS</p>
+          <h1 class="title admin-login-title">进入博客控制台</h1>
+          <p class="lead">
+            登录后可以发布文章、修改作者资料、管理导航链接，并保持前台内容与后台配置实时同步。
+          </p>
+          <div class="admin-login-glow"></div>
+          <div class="admin-login-metrics">
+            <div class="admin-login-metric">
+              <span class="admin-login-metric-value">Posts</span>
+              <span class="admin-login-metric-label">创建、编辑、删除</span>
+            </div>
+            <div class="admin-login-metric">
+              <span class="admin-login-metric-value">Profile</span>
+              <span class="admin-login-metric-label">资料与简介动态生效</span>
+            </div>
+            <div class="admin-login-metric">
+              <span class="admin-login-metric-value">Nav</span>
+              <span class="admin-login-metric-label">导航排序与新窗口控制</span>
+            </div>
+          </div>
+        </article>
+
+        <article class="glass panel admin-login-card">
+          <div class="admin-login-card-head">
+            <p class="badge">SIGN IN</p>
+            <h2 class="admin-panel-title">管理员登录</h2>
+            <p class="admin-panel-desc">使用 Cloudflare Secrets 中配置的后台账号密码登录。</p>
+          </div>
+
+          <form id="loginForm" class="admin-form admin-login-form">
+            <label class="admin-field">
+              <span class="admin-label">用户名</span>
+              <input id="loginUsername" type="text" autocomplete="username" placeholder="输入管理员用户名" />
+            </label>
+            <label class="admin-field">
+              <span class="admin-label">密码</span>
+              <input id="loginPassword" type="password" autocomplete="current-password" placeholder="输入管理员密码" />
+            </label>
+            <button class="btn primary admin-login-submit" type="submit">进入后台</button>
+          </form>
+
+          <p id="loginStatus" class="admin-status">登录后将建立安全会话，不再需要手动粘贴 Bearer Token。</p>
+
+          <div class="admin-login-footer">
+            <a class="btn ghost" href="/">返回首页</a>
+          </div>
+        </article>
+      </section>
+    </main>
+
+    <button class="back-to-top" aria-label="返回顶部">↑</button>
+    <div class="lightbox" aria-hidden="true">
+      <button class="lightbox-close" aria-label="关闭">×</button>
+      <img src="" alt="" />
+    </div>
+
+    <script src="/assets/js/main.js" defer></script>
+    <script src="/assets/js/admin-login.js" defer></script>
+  </body>
+</html>

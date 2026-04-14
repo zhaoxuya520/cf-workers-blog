@@ -12,12 +12,21 @@
   - `/posts/:slug`：文章详情
   - `/about`：关于页
   - `/ai`：AI 工具页
+  - `/admin`：后台管理页
 - **API**：
   - `GET /api/posts`
   - `GET /api/posts/:slug`
   - `POST /api/posts`（需要 `ADMIN_TOKEN`）
   - `PUT /api/posts/:slug`（需要 `ADMIN_TOKEN`）
   - `DELETE /api/posts/:slug`（需要 `ADMIN_TOKEN`）
+  - `GET /api/admin/session`
+  - `POST /api/admin/login`
+  - `POST /api/admin/logout`
+  - `GET /api/admin/bootstrap`（需要 `ADMIN_TOKEN`）
+  - `PUT /api/admin/site-config`（需要 `ADMIN_TOKEN`）
+  - `POST /api/admin/nav`（需要 `ADMIN_TOKEN`）
+  - `PUT /api/admin/nav/:id`（需要 `ADMIN_TOKEN`）
+  - `DELETE /api/admin/nav/:id`（需要 `ADMIN_TOKEN`）
 
 ## 本地开发
 
@@ -52,7 +61,10 @@ npx wrangler d1 create blog
 npm run db:migrate:remote
 ```
 
-迁移文件在：`migrations/0001_init.sql`
+迁移文件在：
+
+- `migrations/0001_init.sql`
+- `migrations/0002_admin_console.sql`
 
 ## 部署到 Cloudflare Workers
 
@@ -66,6 +78,26 @@ npx wrangler deploy
 npx wrangler secret put ADMIN_TOKEN
 ```
 
+设置后台登录账号：
+
+```bash
+npx wrangler secret put ADMIN_LOGIN_USERNAME
+npx wrangler secret put ADMIN_LOGIN_PASSWORD
+```
+
+部署完成后可直接访问：
+
+```text
+https://<your-worker-domain>/admin
+```
+
+后台支持：
+
+- 登录页 + 安全会话 Cookie
+- 新建、编辑、删除文章
+- 修改博客标题、简介、作者资料
+- 管理导航链接（标题、链接、排序、新窗口打开）
+
 ## 一键部署（GitHub Actions → Cloudflare Workers）
 
 本仓库已内置 GitHub Actions 工作流：`Deploy to Cloudflare Workers`，配置好 Secrets 后，在 GitHub 页面点一次 “Run workflow” 即可部署。
@@ -78,6 +110,8 @@ npx wrangler secret put ADMIN_TOKEN
 可选：
 
 - `ADMIN_TOKEN`（用于站点写接口；建议用 `wrangler secret put ADMIN_TOKEN` 只设置在 Cloudflare 侧）
+- `ADMIN_LOGIN_USERNAME`
+- `ADMIN_LOGIN_PASSWORD`
 
 使用步骤：
 

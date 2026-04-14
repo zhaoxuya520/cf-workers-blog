@@ -13,6 +13,8 @@ export interface Env {
   ASSETS: Fetcher;
   DB?: D1Database;
   ADMIN_TOKEN?: string;
+  ADMIN_LOGIN_USERNAME?: string;
+  ADMIN_LOGIN_PASSWORD?: string;
   BLOG_TITLE?: string;
   BLOG_DESCRIPTION?: string;
   AUTHOR_NAME?: string;
@@ -20,6 +22,20 @@ export interface Env {
   GITHUB_URL?: string;
   EMAIL?: string;
 }
+
+type SiteState = {
+  siteConfig: SiteConfig;
+  navLinks: NavLink[];
+};
+
+type SiteConfig = {
+  blogTitle: string;
+  blogDescription: string;
+  authorName: string;
+  profileBio: string;
+  githubUrl: string;
+  email: string;
+};
 
 type PostRow = {
   id: string;
@@ -35,19 +51,35 @@ type PostRow = {
 
 type PostListRow = Omit<PostRow, "content_md">;
 
+type NavLinkRow = {
+  id: string;
+  label: string;
+  href: string;
+  sort_order: number;
+  open_in_new_tab: number;
+  created_at: number;
+  updated_at: number;
+};
+
+type NavLink = {
+  id: string;
+  label: string;
+  href: string;
+  sortOrder: number;
+  openInNewTab: boolean;
+};
+
 const md = new MarkdownIt({
   html: false,
   linkify: true,
   typographer: true,
 });
 
-md.validateLink = (url: string) => {
-  const s = (url || "").trim().toLowerCase();
-  if (!s) return false;
-  if (s.startsWith("javascript:")) return false;
-  if (s.startsWith("data:")) return false;
-  return true;
-};
+md.validateLink = (url: string) => isSafeHref(url);
+
+const SESSION_COOKIE = "blog_admin_session";
+const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 7;
+const encoder = new TextEncoder();
 
 function withSecurityHeaders(headers: HeadersInit = {}): Headers {
   const h = new Headers(headers);
@@ -81,27 +113,12 @@ function html(body: string, init: ResponseInit = {}): Response {
   return new Response(body, { ...init, headers });
 }
 
-function notFoundPage(env: Env): Response {
-  return html(
-    layout(env, {
-      title: "404",
-      description: env.BLOG_DESCRIPTION,
-      body: `<section class="glass panel"><h1 class="h1">404</h1><p class="muted">页面不存在。</p><p><a class="link" href="/">返回首页</a></p></section>`,
-    }),
-    { status: 404 }
-  );
-}
-
 function badRequest(message: string): Response {
   return json({ ok: false, error: message }, { status: 400 });
 }
 
 function unauthorized(): Response {
   return json({ ok: false, error: "Unauthorized" }, { status: 401 });
-}
-
-function forbidden(): Response {
-  return json({ ok: false, error: "Forbidden" }, { status: 403 });
 }
 
 function conflict(message: string): Response {
@@ -159,18 +176,143 @@ function esc(s: string): string {
     .replaceAll("'", "&#39;");
 }
 
-function layout(
-  env: Env,
-  opts: { title?: string; description?: string; body: string; extraHead?: string }
-): string {
-  const siteTitle = env.BLOG_TITLE || "Blog";
-  const fullTitle = opts.title ? `${opts.title} · ${siteTitle}` : siteTitle;
-  const desc = opts.description || env.BLOG_DESCRIPTION || "";
-  const footerLinks = [
-    `<a class="footer-link" href="/">首页</a>`,
-    `<a class="footer-link" href="/about">关于</a>`,
-    `<a class="footer-link" href="/ai">AI工具</a>`,
-  ].join(" · ");
+function toBase64Url(bytes: Uint8Array): string {
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+function fromBase64Url(value: string): Uint8Array {
+  const padded = value.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(value.length / 4) * 4, "=");
+  const binary = atob(padded);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
+function parseCookies(request: Request): Record<string, string> {
+  const header = request.headers.get("Cookie") || "";
+  const entries = header
+    .split(";")
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .map((part) => {
+      const idx = part.indexOf("=");
+      return idx >= 0 ? [part.slice(0, idx), part.slice(idx + 1)] : [part, ""];
+    });
+  return Object.fromEntries(entries);
+}
+
+function sessionResponse(data: JsonValue, cookie: string, init: ResponseInit = {}): Response {
+  const headers = withSecurityHeaders(init.headers);
+  headers.set("Content-Type", "application/json; charset=utf-8");
+  headers.append("Set-Cookie", cookie);
+  return new Response(JSON.stringify(data), { ...init, headers });
+}
+
+function buildSessionCookie(token: string, maxAgeSeconds: number): string {
+  return `${SESSION_COOKIE}=${token}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${maxAgeSeconds}`;
+}
+
+function clearSessionCookie(): string {
+  return `${SESSION_COOKIE}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`;
+}
+
+async function signSession(secret: string, payload: string): Promise<string> {
+  const key = await crypto.subtle.importKey("raw", encoder.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const signature = await crypto.subtle.sign("HMAC", key, encoder.encode(payload));
+  return toBase64Url(new Uint8Array(signature));
+}
+
+async function createSessionToken(env: Env, username: string): Promise<string> {
+  const payload = toBase64Url(
+    encoder.encode(
+      JSON.stringify({
+        username,
+        exp: Date.now() + SESSION_TTL_MS,
+      })
+    )
+  );
+  const signature = await signSession((env.ADMIN_TOKEN || "").trim(), payload);
+  return `${payload}.${signature}`;
+}
+
+async function readAdminSession(request: Request, env: Env): Promise<{ username: string } | null> {
+  const token = parseCookies(request)[SESSION_COOKIE];
+  if (!token || !(env.ADMIN_TOKEN || "").trim()) return null;
+
+  const [payload, signature] = token.split(".");
+  if (!payload || !signature) return null;
+
+  const expected = await signSession((env.ADMIN_TOKEN || "").trim(), payload);
+  if (expected !== signature) return null;
+
+  try {
+    const parsed = JSON.parse(new TextDecoder().decode(fromBase64Url(payload))) as { username?: string; exp?: number };
+    if (!parsed.username || !parsed.exp || parsed.exp < Date.now()) return null;
+    return { username: parsed.username };
+  } catch {
+    return null;
+  }
+}
+
+function defaultSiteConfig(env: Env): SiteConfig {
+  return {
+    blogTitle: (env.BLOG_TITLE || "Blog").trim() || "Blog",
+    blogDescription: (env.BLOG_DESCRIPTION || "").trim(),
+    authorName: (env.AUTHOR_NAME || env.BLOG_TITLE || "Author").trim() || "Author",
+    profileBio: (env.PROFILE_BIO || "你好，欢迎来到我的博客。").trim(),
+    githubUrl: (env.GITHUB_URL || "").trim(),
+    email: (env.EMAIL || "").trim(),
+  };
+}
+
+function defaultNavLinks(): NavLink[] {
+  return [
+    { id: "nav-home-fallback", label: "首页", href: "/", sortOrder: 0, openInNewTab: false },
+    { id: "nav-about-fallback", label: "关于", href: "/about", sortOrder: 10, openInNewTab: false },
+    { id: "nav-ai-fallback", label: "AI工具", href: "/ai", sortOrder: 20, openInNewTab: false },
+  ];
+}
+
+function isSafeHref(url: string): boolean {
+  const value = (url || "").trim().toLowerCase();
+  if (!value) return false;
+  if (value.startsWith("javascript:") || value.startsWith("data:")) return false;
+  return value.startsWith("/") || value.startsWith("#") || value.startsWith("http://") || value.startsWith("https://") || value.startsWith("mailto:");
+}
+
+function isSafeImageUrl(url: string): boolean {
+  const value = (url || "").trim().toLowerCase();
+  if (!value) return true;
+  if (value.startsWith("javascript:")) return false;
+  return value.startsWith("/") || value.startsWith("http://") || value.startsWith("https://") || value.startsWith("data:image/");
+}
+
+function navLinkAttrs(link: NavLink): string {
+  return link.openInNewTab ? ` target="_blank" rel="noopener noreferrer"` : "";
+}
+
+function boolToInt(value: boolean): number {
+  return value ? 1 : 0;
+}
+
+function toNavLink(row: NavLinkRow): NavLink {
+  return {
+    id: row.id,
+    label: row.label,
+    href: row.href,
+    sortOrder: row.sort_order,
+    openInNewTab: !!row.open_in_new_tab,
+  };
+}
+
+function layout(state: SiteState, opts: { title?: string; description?: string; body: string; extraHead?: string }): string {
+  const fullTitle = opts.title ? `${opts.title} · ${state.siteConfig.blogTitle}` : state.siteConfig.blogTitle;
+  const desc = opts.description || state.siteConfig.blogDescription || "";
+  const footerLinks = state.navLinks
+    .map((link) => `<a class="footer-link" href="${esc(link.href)}"${navLinkAttrs(link)}>${esc(link.label)}</a>`)
+    .join(" · ");
 
   return `<!doctype html>
 <html lang="zh-CN">
@@ -211,7 +353,7 @@ function layout(
     </main>
     <footer class="site-footer">
       <div class="container">
-        <p class="footer-text">© ${new Date().getFullYear()} ${esc(siteTitle)} · ${footerLinks}</p>
+        <p class="footer-text">© ${new Date().getFullYear()} ${esc(state.siteConfig.blogTitle)}${footerLinks ? ` · ${footerLinks}` : ""}</p>
       </div>
     </footer>
     <button class="back-to-top" aria-label="返回顶部">↑</button>
@@ -270,18 +412,232 @@ function parseTags(tagsJson: string): string[] {
   return [];
 }
 
-function isAdmin(request: Request, env: Env): boolean {
-  const required = (env.ADMIN_TOKEN || "").trim();
-  if (!required) return false;
+function normalizeTags(input: unknown): string[] {
+  if (!Array.isArray(input)) return [];
+  return input
+    .map((tag) => String(tag).trim())
+    .filter(Boolean)
+    .filter((tag, index, arr) => arr.indexOf(tag) === index);
+}
+
+async function getSiteConfig(env: Env): Promise<SiteConfig> {
+  const fallback = defaultSiteConfig(env);
+
+  try {
+    const db = await dbOrThrow(env);
+    const row = await db.prepare("SELECT value_json FROM site_settings WHERE key = 'site_config' LIMIT 1").first<{ value_json: string }>();
+    if (!row?.value_json) return fallback;
+
+    const parsed = JSON.parse(row.value_json) as Partial<SiteConfig>;
+    return {
+      blogTitle: String(parsed.blogTitle ?? fallback.blogTitle).trim() || fallback.blogTitle,
+      blogDescription: String(parsed.blogDescription ?? fallback.blogDescription).trim(),
+      authorName: String(parsed.authorName ?? fallback.authorName).trim() || fallback.authorName,
+      profileBio: String(parsed.profileBio ?? fallback.profileBio).trim() || fallback.profileBio,
+      githubUrl: String(parsed.githubUrl ?? fallback.githubUrl).trim(),
+      email: String(parsed.email ?? fallback.email).trim(),
+    };
+  } catch {
+    return fallback;
+  }
+}
+
+async function saveSiteConfig(env: Env, config: SiteConfig): Promise<void> {
+  const db = await dbOrThrow(env);
+  const now = Date.now();
+  await db
+    .prepare(
+      "INSERT INTO site_settings (key, value_json, updated_at) VALUES ('site_config', ?1, ?2) ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json, updated_at = excluded.updated_at"
+    )
+    .bind(JSON.stringify(config), now)
+    .run();
+}
+
+async function listNavLinks(env: Env): Promise<NavLink[]> {
+  try {
+    const db = await dbOrThrow(env);
+    const result = await db
+      .prepare("SELECT id, label, href, sort_order, open_in_new_tab, created_at, updated_at FROM nav_links ORDER BY sort_order ASC, created_at ASC")
+      .all<NavLinkRow>();
+    return (result.results || []).map(toNavLink);
+  } catch {
+    return defaultNavLinks();
+  }
+}
+
+async function createNavLink(
+  env: Env,
+  input: { label: string; href: string; sortOrder: number; openInNewTab: boolean }
+): Promise<NavLink> {
+  const db = await dbOrThrow(env);
+  const now = Date.now();
+  const id = nanoid(16);
+  await db
+    .prepare(
+      "INSERT INTO nav_links (id, label, href, sort_order, open_in_new_tab, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)"
+    )
+    .bind(id, input.label, input.href, input.sortOrder, boolToInt(input.openInNewTab), now, now)
+    .run();
+
+  return {
+    id,
+    label: input.label,
+    href: input.href,
+    sortOrder: input.sortOrder,
+    openInNewTab: input.openInNewTab,
+  };
+}
+
+async function updateNavLink(
+  env: Env,
+  id: string,
+  input: { label: string; href: string; sortOrder: number; openInNewTab: boolean }
+): Promise<NavLink | null> {
+  const db = await dbOrThrow(env);
+  const exists = await db.prepare("SELECT id FROM nav_links WHERE id = ?1 LIMIT 1").bind(id).first<{ id: string }>();
+  if (!exists) return null;
+
+  await db
+    .prepare("UPDATE nav_links SET label = ?1, href = ?2, sort_order = ?3, open_in_new_tab = ?4, updated_at = ?5 WHERE id = ?6")
+    .bind(input.label, input.href, input.sortOrder, boolToInt(input.openInNewTab), Date.now(), id)
+    .run();
+
+  return {
+    id,
+    label: input.label,
+    href: input.href,
+    sortOrder: input.sortOrder,
+    openInNewTab: input.openInNewTab,
+  };
+}
+
+async function deleteNavLink(env: Env, id: string): Promise<boolean> {
+  const db = await dbOrThrow(env);
+  const result = await db.prepare("DELETE FROM nav_links WHERE id = ?1").bind(id).run();
+  return (result.meta?.changes || 0) > 0;
+}
+
+async function resolveSiteState(env: Env): Promise<SiteState> {
+  const [siteConfig, navLinks] = await Promise.all([getSiteConfig(env), listNavLinks(env)]);
+  return {
+    siteConfig,
+    navLinks,
+  };
+}
+
+function hasAdminConfigured(env: Env): boolean {
+  return !!(env.ADMIN_TOKEN || "").trim();
+}
+
+function hasLoginConfigured(env: Env): boolean {
+  return !!(env.ADMIN_TOKEN || "").trim() && !!(env.ADMIN_LOGIN_USERNAME || "").trim() && !!(env.ADMIN_LOGIN_PASSWORD || "").trim();
+}
+
+function adminDisabled(): Response {
+  return json(
+    {
+      ok: false,
+      error: "ADMIN_TOKEN not configured. Run `wrangler secret put ADMIN_TOKEN` first.",
+    },
+    { status: 503 }
+  );
+}
+
+function loginDisabled(): Response {
+  return json(
+    {
+      ok: false,
+      error: "Admin login is not configured. Set `ADMIN_LOGIN_USERNAME` and `ADMIN_LOGIN_PASSWORD` as Cloudflare secrets.",
+    },
+    { status: 503 }
+  );
+}
+
+async function ensureAdmin(request: Request, env: Env): Promise<Response | null> {
+  if (!hasAdminConfigured(env)) return adminDisabled();
+
+  const session = await readAdminSession(request, env);
+  if (session) return null;
+
   const auth = request.headers.get("Authorization") || "";
-  const m = auth.match(/^Bearer\s+(.+)$/i);
-  if (!m) return false;
-  return m[1].trim() === required;
+  const match = auth.match(/^Bearer\s+(.+)$/i);
+  if (!match) return unauthorized();
+  if (match[1].trim() !== (env.ADMIN_TOKEN || "").trim()) return unauthorized();
+  return null;
+}
+
+function normalizeSiteConfigInput(input: unknown, fallback: SiteConfig): SiteConfig {
+  const source = typeof input === "object" && input !== null ? (input as Record<string, unknown>) : {};
+  const githubUrl = String(source.githubUrl ?? fallback.githubUrl).trim();
+  const email = String(source.email ?? fallback.email).trim();
+
+  if (githubUrl && !isSafeHref(githubUrl)) {
+    throw new Error("GitHub 链接格式不正确");
+  }
+
+  return {
+    blogTitle: String(source.blogTitle ?? fallback.blogTitle).trim().slice(0, 120) || fallback.blogTitle,
+    blogDescription: String(source.blogDescription ?? fallback.blogDescription).trim().slice(0, 280),
+    authorName: String(source.authorName ?? fallback.authorName).trim().slice(0, 80) || fallback.authorName,
+    profileBio: String(source.profileBio ?? fallback.profileBio).trim() || fallback.profileBio,
+    githubUrl,
+    email,
+  };
+}
+
+function normalizeNavLinkInput(input: unknown): { label: string; href: string; sortOrder: number; openInNewTab: boolean } {
+  const source = typeof input === "object" && input !== null ? (input as Record<string, unknown>) : {};
+  const label = String(source.label ?? "").trim().slice(0, 40);
+  const href = String(source.href ?? "").trim().slice(0, 320);
+  const sortOrder = Number.parseInt(String(source.sortOrder ?? 0), 10);
+  const openInNewTab = !!source.openInNewTab;
+
+  if (!label) throw new Error("导航标题不能为空");
+  if (!href) throw new Error("导航链接不能为空");
+  if (!isSafeHref(href)) throw new Error("导航链接格式不正确");
+
+  return {
+    label,
+    href,
+    sortOrder: Number.isNaN(sortOrder) ? 0 : sortOrder,
+    openInNewTab,
+  };
+}
+
+function renderQuickLinks(navLinks: NavLink[]): string {
+  if (!navLinks.length) return "";
+  return `<section class="actions admin-actions admin-actions-compact">
+${navLinks.map((link) => `<a class="btn ghost" href="${esc(link.href)}"${navLinkAttrs(link)}>${esc(link.label)}</a>`).join("\n")}
+</section>`;
+}
+
+function renderTagChips(posts: PostListRow[], activeTag: string): string {
+  const uniqueTags = Array.from(new Set(posts.flatMap((post) => parseTags(post.tags_json)).map((tag) => tag.trim()).filter(Boolean)));
+  if (!uniqueTags.length) return "";
+
+  return `<div class="chips">
+${uniqueTags
+  .map((tag) => `<a class="chip${activeTag === tag.toLowerCase() ? " is-active" : ""}" href="/?tag=${encodeURIComponent(tag)}#posts">#${esc(tag)}</a>`)
+  .join("\n")}
+</div>`;
+}
+
+async function notFoundPage(env: Env): Promise<Response> {
+  const state = await resolveSiteState(env);
+  return html(
+    layout(state, {
+      title: "404",
+      description: state.siteConfig.blogDescription,
+      body: `<section class="glass panel"><h1 class="h1">404</h1><p class="muted">页面不存在。</p><p><a class="link" href="/">返回首页</a></p></section>`,
+    }),
+    { status: 404 }
+  );
 }
 
 async function handleHome(request: Request, env: Env): Promise<Response> {
   if (request.method !== "GET") return json({ ok: false, error: "Method Not Allowed" }, { status: 405 });
 
+  const state = await resolveSiteState(env);
   const url = new URL(request.url);
   const tagFilter = (url.searchParams.get("tag") || "").trim().toLowerCase();
   const queryFilter = (url.searchParams.get("q") || "").trim().toLowerCase();
@@ -294,61 +650,75 @@ async function handleHome(request: Request, env: Env): Promise<Response> {
     dbError = String(e);
   }
 
-  const visiblePosts = posts.filter((p) => {
-    const tags = parseTags(p.tags_json).map((t) => t.toLowerCase());
+  const visiblePosts = posts.filter((post) => {
+    const tags = parseTags(post.tags_json).map((tag) => tag.toLowerCase());
     if (tagFilter && !tags.includes(tagFilter)) return false;
     if (!queryFilter) return true;
-    const hay = `${p.title}\n${p.excerpt || ""}`.toLowerCase();
-    return hay.includes(queryFilter) || tags.some((t) => t.includes(queryFilter));
+    const haystack = `${post.title}\n${post.excerpt || ""}`.toLowerCase();
+    return haystack.includes(queryFilter) || tags.some((tag) => tag.includes(queryFilter));
   });
 
+  const toolbar = !dbError
+    ? `<section class="toolbar">
+  <div class="glass panel toolbar-inner">
+    <label class="search">
+      <span class="search-icon">⌕</span>
+      <input id="navSearch" type="text" placeholder="搜索文章标题、摘要或标签" value="${esc(queryFilter)}" />
+    </label>
+    ${renderTagChips(posts, tagFilter)}
+  </div>
+</section>`
+    : "";
+
   const header = `<header class="page-head">
-  <h1 class="page-title">${esc(env.BLOG_TITLE || "Blog")}</h1>
-  <p class="page-desc">${esc(env.BLOG_DESCRIPTION || "")}</p>
+  <p class="badge">DYNAMIC BLOG</p>
+  <h1 class="page-title">${esc(state.siteConfig.blogTitle)}</h1>
+  <p class="page-desc">${esc(state.siteConfig.blogDescription)}</p>
+  ${renderQuickLinks(state.navLinks)}
 </header>`;
 
   const cards = dbError
-    ? `<section class="glass panel">${header}<p class="muted">数据库未配置或不可用。</p><pre class="code">${esc(dbError)}</pre></section>`
+    ? `<section class="glass panel"><p class="muted">数据库未配置或不可用。</p><pre class="code">${esc(dbError)}</pre></section>`
     : visiblePosts.length
       ? `${header}<section class="grid" id="posts">
 ${visiblePosts
-  .map((p) => {
-    const tags = parseTags(p.tags_json);
+  .map((post) => {
+    const tags = parseTags(post.tags_json);
     const tagsAttr = tags.join(",").toLowerCase();
     const tagHtml =
       tags.length > 0
-        ? `<span class="dot" aria-hidden="true">·</span><span class="tags">${tags.map((t) => `<span class="tag">#${esc(t)}</span>`).join("")}</span>`
+        ? `<span class="dot" aria-hidden="true">·</span><span class="tags">${tags.map((tag) => `<span class="tag">#${esc(tag)}</span>`).join("")}</span>`
         : "";
 
-    const cover = p.cover_url
-      ? `<div class="card-cover"><img src="${esc(p.cover_url)}" alt="${esc(p.title)}" loading="lazy"></div>`
+    const cover = post.cover_url
+      ? `<div class="card-cover"><img src="${esc(post.cover_url)}" alt="${esc(post.title)}" loading="lazy"></div>`
       : "";
 
-    return `<article class="card glass panel post-card${p.cover_url ? " has-cover" : ""}"
-  data-title="${esc(p.title.toLowerCase())}"
-  data-excerpt="${esc((p.excerpt || "").toLowerCase())}"
+    return `<article class="card glass panel post-card${post.cover_url ? " has-cover" : ""}"
+  data-title="${esc(post.title.toLowerCase())}"
+  data-excerpt="${esc((post.excerpt || "").toLowerCase())}"
   data-tags="${esc(tagsAttr)}">
   <div class="card-content">
     <div class="meta">
-      <time datetime="${esc(new Date(p.created_at).toISOString())}">${esc(formatDate(p.created_at))}</time>
+      <time datetime="${esc(new Date(post.created_at).toISOString())}">${esc(formatDate(post.created_at))}</time>
       ${tagHtml}
     </div>
-    <h2 class="h2"><a href="/posts/${encodeURIComponent(p.slug)}">${esc(p.title)}</a></h2>
-    <p class="excerpt">${esc(p.excerpt || "")}</p>
-    <div class="footer"><a class="link" href="/posts/${encodeURIComponent(p.slug)}">阅读全文 →</a></div>
+    <h2 class="h2"><a href="/posts/${encodeURIComponent(post.slug)}">${esc(post.title)}</a></h2>
+    <p class="excerpt">${esc(post.excerpt || "")}</p>
+    <div class="footer"><a class="link" href="/posts/${encodeURIComponent(post.slug)}">阅读全文 →</a></div>
   </div>
   ${cover}
 </article>`;
   })
   .join("\n")}
 </section>`
-      : `${header}<section class="footer-note"><div class="glass panel"><p>还没有文章。</p></div></section>`;
+      : `${header}<section class="footer-note"><div class="glass panel"><p>还没有文章，现在就去后台写第一篇吧。</p><p><a class="btn primary" href="/admin">打开后台</a></p></div></section>`;
 
   return html(
-    layout(env, {
+    layout(state, {
       title: "首页",
-      description: env.BLOG_DESCRIPTION,
-      body: cards,
+      description: state.siteConfig.blogDescription,
+      body: `${header}${toolbar}${dbError ? cards : cards.replace(header, "")}`,
     })
   );
 }
@@ -357,12 +727,13 @@ async function handlePost(request: Request, env: Env, slug: string): Promise<Res
   if (request.method !== "GET") return json({ ok: false, error: "Method Not Allowed" }, { status: 405 });
   if (!slug) return notFoundPage(env);
 
+  const state = await resolveSiteState(env);
   let post: PostRow | null = null;
   try {
     post = await getPostBySlug(env, slug);
   } catch (e) {
     return html(
-      layout(env, {
+      layout(state, {
         title: "错误",
         body: `<section class="glass panel"><h1 class="h1">DB Error</h1><pre class="code">${esc(String(e))}</pre></section>`,
       }),
@@ -381,7 +752,7 @@ async function handlePost(request: Request, env: Env, slug: string): Promise<Res
   const readingTime = Math.max(1, Math.floor(words / 300) + 1);
 
   return html(
-    layout(env, {
+    layout(state, {
       title: post.title,
       description: stripHtml(post.excerpt || ""),
       body: `<article class="post glass panel">
@@ -405,17 +776,15 @@ async function handlePost(request: Request, env: Env, slug: string): Promise<Res
 async function handleAbout(request: Request, env: Env): Promise<Response> {
   if (request.method !== "GET") return json({ ok: false, error: "Method Not Allowed" }, { status: 405 });
 
-  const name = (env.AUTHOR_NAME || "").trim() || env.BLOG_TITLE || "About";
-  const bio = (env.PROFILE_BIO || "").trim() || "你好，欢迎来到我的博客。";
-  const github = (env.GITHUB_URL || "").trim();
-  const email = (env.EMAIL || "").trim();
+  const state = await resolveSiteState(env);
+  const bioHtml = md.render(state.siteConfig.profileBio || "你好，欢迎来到我的博客。");
 
   const links = [
-    github
-      ? `<a class="about-link icon-link" href="${esc(github)}" target="_blank" rel="noopener noreferrer"><span class="about-link-text">GitHub</span></a>`
+    state.siteConfig.githubUrl
+      ? `<a class="about-link icon-link" href="${esc(state.siteConfig.githubUrl)}" target="_blank" rel="noopener noreferrer"><span class="about-link-text">GitHub</span></a>`
       : "",
-    email
-      ? `<a class="about-link icon-link" href="mailto:${esc(email)}"><span class="about-link-text">发送邮件</span></a>`
+    state.siteConfig.email
+      ? `<a class="about-link icon-link" href="mailto:${esc(state.siteConfig.email)}"><span class="about-link-text">发送邮件</span></a>`
       : "",
   ]
     .filter(Boolean)
@@ -423,31 +792,31 @@ async function handleAbout(request: Request, env: Env): Promise<Response> {
 
   const body = `<header class="page-head">
   <h1 class="page-title">关于</h1>
-  <p class="page-desc">${esc(bio)}</p>
+  <p class="page-desc">${esc(state.siteConfig.blogDescription)}</p>
 </header>
 
 <section class="about-layout">
   <aside class="about-side">
     <div class="glass panel about-side-card">
       <div class="about-avatar-wrap">
-        <img class="about-avatar" src="/assets/avatar.jpg" alt="${esc(name)}的头像" loading="lazy" />
+        <img class="about-avatar" src="/assets/avatar.jpg" alt="${esc(state.siteConfig.authorName)}的头像" loading="lazy" />
       </div>
-      <div class="about-name-pill">${esc(name)}</div>
+      <div class="about-name-pill">${esc(state.siteConfig.authorName)}</div>
       <div class="about-links" aria-label="联系方式">${links}</div>
     </div>
   </aside>
   <section class="about-main glass panel">
     <div class="about-section">
-      <h2 class="about-h2">简介</h2>
-      <div class="about-content"><p>${esc(bio)}</p></div>
+      <h2 class="about-h2">个人资料</h2>
+      <div class="about-content">${bioHtml}</div>
     </div>
   </section>
 </section>`;
 
   return html(
-    layout(env, {
+    layout(state, {
       title: "关于",
-      description: bio,
+      description: state.siteConfig.profileBio,
       body,
     })
   );
@@ -455,6 +824,7 @@ async function handleAbout(request: Request, env: Env): Promise<Response> {
 
 async function handleAi(request: Request, env: Env): Promise<Response> {
   if (request.method !== "GET") return json({ ok: false, error: "Method Not Allowed" }, { status: 405 });
+  const state = await resolveSiteState(env);
 
   const body = `<header class="page-head">
   <h1 class="page-title">AI 工具导航</h1>
@@ -555,12 +925,55 @@ async function handleAi(request: Request, env: Env): Promise<Response> {
 </section>`;
 
   return html(
-    layout(env, {
+    layout(state, {
       title: "AI工具",
       description: "AI 工具导航",
       body,
     })
   );
+}
+
+async function handleAdmin(request: Request, env: Env): Promise<Response> {
+  if (request.method !== "GET") return json({ ok: false, error: "Method Not Allowed" }, { status: 405 });
+  const target = (await readAdminSession(request, env)) ? "/admin/index.html" : "/admin/login.html";
+  const assetRequest = new Request(new URL(target, request.url).toString(), request);
+  const response = await env.ASSETS.fetch(assetRequest);
+  return response.status === 404 ? notFoundPage(env) : response;
+}
+
+async function handleApiAdminSession(request: Request, env: Env): Promise<Response> {
+  if (request.method !== "GET") return json({ ok: false, error: "Method Not Allowed" }, { status: 405 });
+  const session = await readAdminSession(request, env);
+  if (!session) return json({ ok: false, authenticated: false }, { status: 401 });
+  return json({ ok: true, authenticated: true, username: session.username });
+}
+
+async function handleApiAdminLogin(request: Request, env: Env): Promise<Response> {
+  if (request.method !== "POST") return json({ ok: false, error: "Method Not Allowed" }, { status: 405 });
+  if (!hasLoginConfigured(env)) return loginDisabled();
+
+  let body: Record<string, unknown>;
+  try {
+    body = (await request.json()) as Record<string, unknown>;
+  } catch {
+    return badRequest("Invalid JSON");
+  }
+
+  const username = String(body.username || "").trim();
+  const password = String(body.password || "");
+  if (!username || !password) return badRequest("用户名和密码不能为空");
+
+  if (username !== (env.ADMIN_LOGIN_USERNAME || "").trim() || password !== (env.ADMIN_LOGIN_PASSWORD || "")) {
+    return json({ ok: false, error: "用户名或密码错误" }, { status: 401 });
+  }
+
+  const token = await createSessionToken(env, username);
+  return sessionResponse({ ok: true, username }, buildSessionCookie(token, Math.floor(SESSION_TTL_MS / 1000)));
+}
+
+async function handleApiAdminLogout(request: Request): Promise<Response> {
+  if (request.method !== "POST") return json({ ok: false, error: "Method Not Allowed" }, { status: 405 });
+  return sessionResponse({ ok: true }, clearSessionCookie());
 }
 
 async function handleApiListPosts(request: Request, env: Env): Promise<Response> {
@@ -613,25 +1026,27 @@ async function handleApiGetPost(request: Request, env: Env, slug: string): Promi
 
 async function handleApiCreatePost(request: Request, env: Env): Promise<Response> {
   if (request.method !== "POST") return json({ ok: false, error: "Method Not Allowed" }, { status: 405 });
-  if (!env.ADMIN_TOKEN || !env.ADMIN_TOKEN.trim()) return forbidden();
-  if (!isAdmin(request, env)) return unauthorized();
 
-  let body: any;
+  const denied = await ensureAdmin(request, env);
+  if (denied) return denied;
+
+  let body: Record<string, unknown>;
   try {
-    body = await request.json();
+    body = (await request.json()) as Record<string, unknown>;
   } catch {
     return badRequest("Invalid JSON");
   }
 
-  const title = String(body?.title || "").trim();
-  const contentMd = String(body?.contentMd || body?.content || "").trim();
-  const tags = Array.isArray(body?.tags) ? body.tags.map((t: any) => String(t).trim()).filter(Boolean) : [];
-  const coverUrl = String(body?.coverUrl || "").trim();
+  const title = String(body.title || "").trim();
+  const contentMd = String(body.contentMd || body.content || "").trim();
+  const tags = normalizeTags(body.tags);
+  const coverUrl = String(body.coverUrl || "").trim();
 
   if (!title) return badRequest("Missing title");
   if (!contentMd) return badRequest("Missing contentMd");
+  if (!isSafeImageUrl(coverUrl)) return badRequest("coverUrl 格式不正确");
 
-  const wantedSlug = String(body?.slug || "").trim();
+  const wantedSlug = slugify(String(body.slug || "").trim());
   let slug = wantedSlug || slugify(title);
   if (!slug) slug = `post-${nanoid(10)}`;
 
@@ -656,41 +1071,47 @@ async function handleApiCreatePost(request: Request, env: Env): Promise<Response
 
 async function handleApiUpdatePost(request: Request, env: Env, slug: string): Promise<Response> {
   if (request.method !== "PUT") return json({ ok: false, error: "Method Not Allowed" }, { status: 405 });
-  if (!env.ADMIN_TOKEN || !env.ADMIN_TOKEN.trim()) return forbidden();
-  if (!isAdmin(request, env)) return unauthorized();
 
-  let body: any;
+  const denied = await ensureAdmin(request, env);
+  if (denied) return denied;
+
+  let body: Record<string, unknown>;
   try {
-    body = await request.json();
+    body = (await request.json()) as Record<string, unknown>;
   } catch {
     return badRequest("Invalid JSON");
   }
-
-  const title = body?.title != null ? String(body.title).trim() : null;
-  const contentMd = body?.contentMd != null ? String(body.contentMd).trim() : body?.content != null ? String(body.content).trim() : null;
-  const excerpt = body?.excerpt != null ? String(body.excerpt).trim() : null;
-  const coverUrl = body?.coverUrl != null ? String(body.coverUrl).trim() : null;
-  const tags = Array.isArray(body?.tags) ? body.tags.map((t: any) => String(t).trim()).filter(Boolean) : null;
 
   try {
     const db = await dbOrThrow(env);
     const existing = await getPostBySlug(env, slug);
     if (!existing) return json({ ok: false, error: "Not Found" }, { status: 404 });
 
-    const nextTitle = title ?? existing.title;
-    const nextContent = contentMd ?? existing.content_md;
-    const nextExcerpt = excerpt ?? existing.excerpt ?? excerptFromMarkdown(nextContent);
-    const nextCover = coverUrl ?? existing.cover_url;
-    const nextTagsJson = tags ? JSON.stringify(tags) : existing.tags_json;
+    const nextTitle = body.title != null ? String(body.title).trim() : existing.title;
+    const nextContent =
+      body.contentMd != null ? String(body.contentMd).trim() : body.content != null ? String(body.content).trim() : existing.content_md;
+    const nextExcerpt = body.excerpt != null ? String(body.excerpt).trim() : existing.excerpt;
+    const nextCover = body.coverUrl != null ? String(body.coverUrl).trim() : existing.cover_url;
+    const nextTags = body.tags != null ? normalizeTags(body.tags) : parseTags(existing.tags_json);
+    const requestedSlug = body.slug != null ? slugify(String(body.slug).trim()) : existing.slug;
+    const nextSlug = requestedSlug || slugify(nextTitle) || existing.slug;
+
+    if (!nextTitle) return badRequest("Missing title");
+    if (!nextContent) return badRequest("Missing contentMd");
+    if (!isSafeImageUrl(nextCover)) return badRequest("coverUrl 格式不正确");
+
+    if (nextSlug !== existing.slug && (await slugExists(env, nextSlug))) {
+      return conflict("Slug already exists");
+    }
 
     await db
       .prepare(
-        "UPDATE posts SET title=?1, excerpt=?2, tags_json=?3, cover_url=?4, content_md=?5, updated_at=?6 WHERE slug=?7"
+        "UPDATE posts SET slug=?1, title=?2, excerpt=?3, tags_json=?4, cover_url=?5, content_md=?6, updated_at=?7 WHERE slug=?8"
       )
-      .bind(nextTitle, nextExcerpt, nextTagsJson, nextCover, nextContent, Date.now(), slug)
+      .bind(nextSlug, nextTitle, nextExcerpt || excerptFromMarkdown(nextContent), JSON.stringify(nextTags), nextCover, nextContent, Date.now(), slug)
       .run();
 
-    return json({ ok: true });
+    return json({ ok: true, slug: nextSlug });
   } catch (e) {
     return json({ ok: false, error: String(e) }, { status: 500 });
   }
@@ -698,8 +1119,9 @@ async function handleApiUpdatePost(request: Request, env: Env, slug: string): Pr
 
 async function handleApiDeletePost(request: Request, env: Env, slug: string): Promise<Response> {
   if (request.method !== "DELETE") return json({ ok: false, error: "Method Not Allowed" }, { status: 405 });
-  if (!env.ADMIN_TOKEN || !env.ADMIN_TOKEN.trim()) return forbidden();
-  if (!isAdmin(request, env)) return unauthorized();
+
+  const denied = await ensureAdmin(request, env);
+  if (denied) return denied;
 
   try {
     const db = await dbOrThrow(env);
@@ -708,6 +1130,113 @@ async function handleApiDeletePost(request: Request, env: Env, slug: string): Pr
   } catch (e) {
     return json({ ok: false, error: String(e) }, { status: 500 });
   }
+}
+
+async function handleApiAdminBootstrap(request: Request, env: Env): Promise<Response> {
+  if (request.method !== "GET") return json({ ok: false, error: "Method Not Allowed" }, { status: 405 });
+
+  const denied = await ensureAdmin(request, env);
+  if (denied) return denied;
+
+  try {
+    const [state, posts] = await Promise.all([resolveSiteState(env), listPosts(env, 200)]);
+    return json({
+      ok: true,
+      siteConfig: state.siteConfig,
+      navLinks: state.navLinks,
+      posts: posts.map((post) => ({
+        id: post.id,
+        slug: post.slug,
+        title: post.title,
+        excerpt: post.excerpt,
+        tags: parseTags(post.tags_json),
+        coverUrl: post.cover_url,
+        createdAt: post.created_at,
+        updatedAt: post.updated_at,
+      })),
+    });
+  } catch (e) {
+    return json({ ok: false, error: String(e) }, { status: 500 });
+  }
+}
+
+async function handleApiAdminSiteConfig(request: Request, env: Env): Promise<Response> {
+  const denied = await ensureAdmin(request, env);
+  if (denied) return denied;
+
+  if (request.method === "GET") {
+    try {
+      const siteConfig = await getSiteConfig(env);
+      return json({ ok: true, siteConfig });
+    } catch (e) {
+      return json({ ok: false, error: String(e) }, { status: 500 });
+    }
+  }
+
+  if (request.method !== "PUT") return json({ ok: false, error: "Method Not Allowed" }, { status: 405 });
+
+  try {
+    const current = await getSiteConfig(env);
+    const payload = await request.json();
+    const next = normalizeSiteConfigInput(payload, current);
+    await saveSiteConfig(env, next);
+    return json({ ok: true, siteConfig: next });
+  } catch (e) {
+    return badRequest(e instanceof Error ? e.message : String(e));
+  }
+}
+
+async function handleApiAdminNavCollection(request: Request, env: Env): Promise<Response> {
+  const denied = await ensureAdmin(request, env);
+  if (denied) return denied;
+
+  if (request.method === "GET") {
+    try {
+      return json({ ok: true, navLinks: await listNavLinks(env) });
+    } catch (e) {
+      return json({ ok: false, error: String(e) }, { status: 500 });
+    }
+  }
+
+  if (request.method !== "POST") return json({ ok: false, error: "Method Not Allowed" }, { status: 405 });
+
+  try {
+    const input = normalizeNavLinkInput(await request.json());
+    const navLink = await createNavLink(env, input);
+    return json({ ok: true, navLink });
+  } catch (e) {
+    return badRequest(e instanceof Error ? e.message : String(e));
+  }
+}
+
+async function handleApiAdminNavItem(request: Request, env: Env, id: string): Promise<Response> {
+  const denied = await ensureAdmin(request, env);
+  if (denied) return denied;
+
+  if (!id) return json({ ok: false, error: "Not Found" }, { status: 404 });
+
+  if (request.method === "PUT") {
+    try {
+      const input = normalizeNavLinkInput(await request.json());
+      const navLink = await updateNavLink(env, id, input);
+      if (!navLink) return json({ ok: false, error: "Not Found" }, { status: 404 });
+      return json({ ok: true, navLink });
+    } catch (e) {
+      return badRequest(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  if (request.method === "DELETE") {
+    try {
+      const deleted = await deleteNavLink(env, id);
+      if (!deleted) return json({ ok: false, error: "Not Found" }, { status: 404 });
+      return json({ ok: true });
+    } catch (e) {
+      return json({ ok: false, error: String(e) }, { status: 500 });
+    }
+  }
+
+  return json({ ok: false, error: "Method Not Allowed" }, { status: 405 });
 }
 
 function normalizePath(pathname: string): string {
@@ -735,6 +1264,7 @@ export default {
     if (pathname === "/") return handleHome(request, env);
     if (pathname === "/about") return handleAbout(request, env);
     if (pathname === "/ai") return handleAi(request, env);
+    if (pathname === "/admin") return handleAdmin(request, env);
     if (pathname.startsWith("/posts/")) {
       const slug = pathname.slice("/posts/".length);
       return handlePost(request, env, slug);
@@ -754,6 +1284,17 @@ export default {
       if (request.method === "PUT") return handleApiUpdatePost(request, env, slug);
       if (request.method === "DELETE") return handleApiDeletePost(request, env, slug);
       return json({ ok: false, error: "Method Not Allowed" }, { status: 405 });
+    }
+
+    if (pathname === "/api/admin/bootstrap") return handleApiAdminBootstrap(request, env);
+    if (pathname === "/api/admin/session") return handleApiAdminSession(request, env);
+    if (pathname === "/api/admin/login") return handleApiAdminLogin(request, env);
+    if (pathname === "/api/admin/logout") return handleApiAdminLogout(request);
+    if (pathname === "/api/admin/site-config") return handleApiAdminSiteConfig(request, env);
+    if (pathname === "/api/admin/nav") return handleApiAdminNavCollection(request, env);
+    if (pathname.startsWith("/api/admin/nav/")) {
+      const id = pathname.slice("/api/admin/nav/".length);
+      return handleApiAdminNavItem(request, env, id);
     }
 
     return notFoundPage(env);
