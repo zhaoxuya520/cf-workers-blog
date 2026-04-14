@@ -7,12 +7,15 @@
 - **文章存储**：Cloudflare D1（SQLite）
 - **服务端渲染**：Workers 运行时把 Markdown 渲染为 HTML（禁用 Markdown 内嵌 HTML，降低 XSS 风险）
 - **静态资源**：`public/`（通过 Workers 静态资源能力直接提供 `/assets/*`）
+- **资源优化**：构建时生成压缩版 CSS、WebP 头像、Service Worker 缓存
 - **页面路由**：
   - `/`：文章列表（支持 `?q=`、`?tag=` 简单过滤）
   - `/posts/:slug`：文章详情
   - `/about`：关于页
   - `/ai`：AI 工具页
   - `/admin`：后台管理页
+  - `/rss.xml`：RSS 订阅
+  - `/atom.xml`：Atom 订阅
 - **API**：
   - `GET /api/posts`
   - `GET /api/posts/:slug`
@@ -32,6 +35,7 @@
 
 ```bash
 npm install
+npm run build:assets
 ```
 
 本机运行（需要 `wrangler --local` 正常工作）：
@@ -55,7 +59,12 @@ npx wrangler d1 create blog
 
 2) 把命令输出中的 `database_id` 填到 `wrangler.toml` 的 `[[d1_databases]] database_id`。
 
-3) 应用迁移（远端）：
+3) 按需修改 `wrangler.toml`：
+
+- `SITE_URL`：你的正式站点地址，用于生成 RSS / Atom 绝对链接
+- `CORS_ALLOW_ORIGINS`：允许跨域访问 API 的白名单，多个来源用英文逗号分隔
+
+4) 应用迁移（远端）：
 
 ```bash
 npm run db:migrate:remote
@@ -98,6 +107,14 @@ https://<your-worker-domain>/admin
 - 修改博客标题、简介、作者资料
 - 管理导航链接（标题、链接、排序、新窗口打开）
 
+站点增强：
+
+- RSS / Atom 订阅
+- Markdown 代码高亮
+- Service Worker 离线缓存
+- WebP 头像资源优化
+- API CORS 白名单（`CORS_ALLOW_ORIGINS`）
+
 ## 一键部署（GitHub Actions → Cloudflare Workers）
 
 本仓库已内置 GitHub Actions 工作流：`Deploy to Cloudflare Workers`，配置好 Secrets 后，在 GitHub 页面点一次 “Run workflow” 即可部署。
@@ -118,6 +135,11 @@ https://<your-worker-domain>/admin
 1) 在 Cloudflare 创建 D1 数据库，并把 `database_id` 填入 `wrangler.toml`。
 2) 打开 GitHub → `Actions` → `Deploy to Cloudflare Workers` → `Run workflow`。
 3) 默认会先跑 `wrangler d1 migrations apply DB --remote`，再 `wrangler deploy`（可在运行时取消勾选 migrations）。
+
+这个工作流现在也会：
+
+- 自动执行 `npm run build:assets`
+- 如果你在 GitHub Secrets 里填了管理员相关值，会自动同步到 Workers Secrets
 
 ## 通过 API 发布文章
 

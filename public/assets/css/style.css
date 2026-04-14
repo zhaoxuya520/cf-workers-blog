@@ -1144,6 +1144,35 @@ a{color:inherit}
 }
 :root[data-theme="light"] .prose pre{background: rgba(255,255,255,.35)}
 .prose pre code{background: transparent; border:0; padding:0}
+.prose pre.hljs{
+  background: linear-gradient(180deg, rgba(5,12,22,.88), rgba(10,16,30,.82));
+  color: #e7edf7;
+}
+:root[data-theme="light"] .prose pre.hljs{
+  background: linear-gradient(180deg, rgba(248,250,255,.96), rgba(238,244,252,.92));
+  color: #26374a;
+}
+.hljs-comment,
+.hljs-quote{color:#8ea1b5}
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-subst{color:#7ae7c7}
+.hljs-string,
+.hljs-doctag,
+.hljs-attribute{color:#ffd98a}
+.hljs-number,
+.hljs-literal{color:#ff9e80}
+.hljs-title,
+.hljs-section,
+.hljs-selector-id{color:#87caff}
+.hljs-type,
+.hljs-class .hljs-title{color:#f78fb2}
+.hljs-variable,
+.hljs-template-variable,
+.hljs-selector-class{color:#c3d3ff}
+.hljs-built_in,
+.hljs-builtin-name,
+.hljs-link{color:#90f0ff}
 .prose blockquote{
   margin: 16px 0;
   padding: 8px 14px;

@@ -25,8 +25,35 @@ jobs:
       - name: Install
         run: npm ci
 
+      - name: Build assets
+        run: npm run build:assets
+
       - name: Typecheck
         run: npm run typecheck
+
+      - name: Sync ADMIN_TOKEN
+        if: ${{ secrets.ADMIN_TOKEN != '' }}
+        run: printf "%s" "$ADMIN_TOKEN" | npx wrangler secret put ADMIN_TOKEN
+        env:
+          ADMIN_TOKEN: ${{ secrets.ADMIN_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Sync ADMIN_LOGIN_USERNAME
+        if: ${{ secrets.ADMIN_LOGIN_USERNAME != '' }}
+        run: printf "%s" "$ADMIN_LOGIN_USERNAME" | npx wrangler secret put ADMIN_LOGIN_USERNAME
+        env:
+          ADMIN_LOGIN_USERNAME: ${{ secrets.ADMIN_LOGIN_USERNAME }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Sync ADMIN_LOGIN_PASSWORD
+        if: ${{ secrets.ADMIN_LOGIN_PASSWORD != '' }}
+        run: printf "%s" "$ADMIN_LOGIN_PASSWORD" | npx wrangler secret put ADMIN_LOGIN_PASSWORD
+        env:
+          ADMIN_LOGIN_PASSWORD: ${{ secrets.ADMIN_LOGIN_PASSWORD }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
       - name: D1 migrations (remote)
         if: ${{ inputs.run_migrations }}
@@ -40,4 +67,3 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-

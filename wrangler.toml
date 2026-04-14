@@ -12,6 +12,8 @@ AUTHOR_NAME = "zhaoxu"
 PROFILE_BIO = "大家好我 zhaoxu，欢迎交流。"
 GITHUB_URL = "https://github.com/zhaoxuya520"
 EMAIL = "ww7517437@gmail.com"
+SITE_URL = "https://cf-workers-blog.workers.dev"
+CORS_ALLOW_ORIGINS = ""
 
 [[d1_databases]]
 binding = "DB"

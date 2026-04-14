@@ -1,4 +1,5 @@
 import MarkdownIt from "markdown-it";
+import hljs from "highlight.js/lib/common";
 import { nanoid } from "nanoid";
 
 type JsonValue =
@@ -21,6 +22,8 @@ export interface Env {
   PROFILE_BIO?: string;
   GITHUB_URL?: string;
   EMAIL?: string;
+  CORS_ALLOW_ORIGINS?: string;
+  SITE_URL?: string;
 }
 
 type SiteState = {
@@ -73,6 +76,17 @@ const md = new MarkdownIt({
   html: false,
   linkify: true,
   typographer: true,
+  highlight(code, language) {
+    if (language && hljs.getLanguage(language)) {
+      return `<pre class="hljs"><code>${hljs.highlight(code, { language, ignoreIllegals: true }).value}</code></pre>`;
+    }
+
+    if (code.trim()) {
+      return `<pre class="hljs"><code>${hljs.highlightAuto(code).value}</code></pre>`;
+    }
+
+    return `<pre class="hljs"><code>${escapeCodeHtml(code)}</code></pre>`;
+  },
 });
 
 md.validateLink = (url: string) => isSafeHref(url);
@@ -110,6 +124,12 @@ function json(data: JsonValue, init: ResponseInit = {}): Response {
 function html(body: string, init: ResponseInit = {}): Response {
   const headers = withSecurityHeaders(init.headers);
   headers.set("Content-Type", "text/html; charset=utf-8");
+  return new Response(body, { ...init, headers });
+}
+
+function xml(body: string, init: ResponseInit = {}): Response {
+  const headers = withSecurityHeaders(init.headers);
+  headers.set("Content-Type", "application/xml; charset=utf-8");
   return new Response(body, { ...init, headers });
 }
 
@@ -176,6 +196,13 @@ function esc(s: string): string {
     .replaceAll("'", "&#39;");
 }
 
+function escapeCodeHtml(s: string): string {
+  return (s || "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;");
+}
+
 function toBase64Url(bytes: Uint8Array): string {
   let binary = "";
   for (const byte of bytes) binary += String.fromCharCode(byte);
@@ -201,6 +228,57 @@ function parseCookies(request: Request): Record<string, string> {
       return idx >= 0 ? [part.slice(0, idx), part.slice(idx + 1)] : [part, ""];
     });
   return Object.fromEntries(entries);
+}
+
+function xmlEscape(value: string): string {
+  return String(value || "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&apos;");
+}
+
+function getSiteOrigin(request: Request, env: Env): string {
+  const configured = String(env.SITE_URL || "").trim();
+  if (configured) return configured.replace(/\/+$/, "");
+  return new URL(request.url).origin;
+}
+
+function parseAllowedOrigins(env: Env): string[] {
+  return String(env.CORS_ALLOW_ORIGINS || "")
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
+function buildCorsHeaders(request: Request, env: Env): Headers | null {
+  const origin = request.headers.get("Origin");
+  if (!origin) return null;
+
+  const allowed = parseAllowedOrigins(env);
+  if (!allowed.length) return null;
+  if (!allowed.includes(origin)) return null;
+
+  const headers = new Headers();
+  headers.set("Access-Control-Allow-Origin", origin);
+  headers.set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+  headers.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  headers.set("Access-Control-Max-Age", "86400");
+  headers.set("Vary", "Origin");
+  return headers;
+}
+
+function applyCors(request: Request, env: Env, response: Response): Response {
+  const cors = buildCorsHeaders(request, env);
+  if (!cors) return response;
+  const headers = new Headers(response.headers);
+  cors.forEach((value, key) => headers.set(key, value));
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
 }
 
 function sessionResponse(data: JsonValue, cookie: string, init: ResponseInit = {}): Response {
@@ -339,8 +417,10 @@ function layout(state: SiteState, opts: { title?: string; description?: string; 
         }
       })();
     </script>
-    <link rel="stylesheet" href="/assets/css/style.css" />
+    <link rel="stylesheet" href="/assets/css/style.min.css" />
     <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml" />
+    <link rel="alternate" type="application/rss+xml" title="${esc(state.siteConfig.blogTitle)} RSS" href="/rss.xml" />
+    <link rel="alternate" type="application/atom+xml" title="${esc(state.siteConfig.blogTitle)} Atom" href="/atom.xml" />
     ${opts.extraHead || ""}
   </head>
   <body>
@@ -361,6 +441,7 @@ function layout(state: SiteState, opts: { title?: string; description?: string; 
       <button class="lightbox-close" aria-label="关闭">×</button>
       <img src="" alt="" />
     </div>
+    <script src="/assets/js/sw-register.js" defer></script>
     <script src="/assets/js/main.js" defer></script>
   </body>
 </html>`;
@@ -381,6 +462,17 @@ async function listPosts(env: Env, limit: number): Promise<PostListRow[]> {
     )
     .bind(limit)
     .all<PostListRow>();
+  return res.results || [];
+}
+
+async function listPostsForFeed(env: Env, limit: number): Promise<PostRow[]> {
+  const db = await dbOrThrow(env);
+  const res = await db
+    .prepare(
+      "SELECT id, slug, title, excerpt, tags_json, cover_url, created_at, updated_at, content_md FROM posts ORDER BY created_at DESC LIMIT ?1"
+    )
+    .bind(limit)
+    .all<PostRow>();
   return res.results || [];
 }
 
@@ -691,7 +783,7 @@ ${visiblePosts
         : "";
 
     const cover = post.cover_url
-      ? `<div class="card-cover"><img src="${esc(post.cover_url)}" alt="${esc(post.title)}" loading="lazy"></div>`
+      ? `<div class="card-cover"><img src="${esc(post.cover_url)}" alt="${esc(post.title)}" loading="lazy" decoding="async" fetchpriority="low"></div>`
       : "";
 
     return `<article class="card glass panel post-card${post.cover_url ? " has-cover" : ""}"
@@ -799,7 +891,7 @@ async function handleAbout(request: Request, env: Env): Promise<Response> {
   <aside class="about-side">
     <div class="glass panel about-side-card">
       <div class="about-avatar-wrap">
-        <img class="about-avatar" src="/assets/avatar.jpg" alt="${esc(state.siteConfig.authorName)}的头像" loading="lazy" />
+        <img class="about-avatar" src="/assets/avatar.webp" alt="${esc(state.siteConfig.authorName)}的头像" loading="lazy" decoding="async" />
       </div>
       <div class="about-name-pill">${esc(state.siteConfig.authorName)}</div>
       <div class="about-links" aria-label="联系方式">${links}</div>
@@ -931,6 +1023,73 @@ async function handleAi(request: Request, env: Env): Promise<Response> {
       body,
     })
   );
+}
+
+async function handleRss(request: Request, env: Env): Promise<Response> {
+  const state = await resolveSiteState(env);
+  const origin = getSiteOrigin(request, env);
+  const posts = await listPostsForFeed(env, 20);
+  const updatedAt = posts[0]?.updated_at || Date.now();
+
+  const items = posts
+    .map((post) => {
+      const url = `${origin}/posts/${encodeURIComponent(post.slug)}`;
+      const content = md.render(post.content_md || "");
+      return `<item>
+  <title>${xmlEscape(post.title)}</title>
+  <link>${xmlEscape(url)}</link>
+  <guid>${xmlEscape(url)}</guid>
+  <pubDate>${new Date(post.created_at).toUTCString()}</pubDate>
+  <description>${xmlEscape(post.excerpt || "")}</description>
+  <content:encoded><![CDATA[${content}]]></content:encoded>
+</item>`;
+    })
+    .join("\n");
+
+  return xml(`<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/">
+<channel>
+  <title>${xmlEscape(state.siteConfig.blogTitle)}</title>
+  <link>${xmlEscape(origin)}</link>
+  <description>${xmlEscape(state.siteConfig.blogDescription)}</description>
+  <lastBuildDate>${new Date(updatedAt).toUTCString()}</lastBuildDate>
+  ${items}
+</channel>
+</rss>`);
+}
+
+async function handleAtom(request: Request, env: Env): Promise<Response> {
+  const state = await resolveSiteState(env);
+  const origin = getSiteOrigin(request, env);
+  const posts = await listPostsForFeed(env, 20);
+  const updatedAt = new Date(posts[0]?.updated_at || Date.now()).toISOString();
+
+  const entries = posts
+    .map((post) => {
+      const url = `${origin}/posts/${encodeURIComponent(post.slug)}`;
+      const content = md.render(post.content_md || "");
+      return `<entry>
+  <title>${xmlEscape(post.title)}</title>
+  <id>${xmlEscape(url)}</id>
+  <link href="${xmlEscape(url)}" />
+  <updated>${new Date(post.updated_at).toISOString()}</updated>
+  <published>${new Date(post.created_at).toISOString()}</published>
+  <summary>${xmlEscape(post.excerpt || "")}</summary>
+  <content type="html"><![CDATA[${content}]]></content>
+</entry>`;
+    })
+    .join("\n");
+
+  return xml(`<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>${xmlEscape(state.siteConfig.blogTitle)}</title>
+  <id>${xmlEscape(origin)}</id>
+  <link href="${xmlEscape(origin)}/atom.xml" rel="self" />
+  <link href="${xmlEscape(origin)}" />
+  <updated>${updatedAt}</updated>
+  <subtitle>${xmlEscape(state.siteConfig.blogDescription)}</subtitle>
+  ${entries}
+</feed>`);
 }
 
 async function handleAdmin(request: Request, env: Env): Promise<Response> {
@@ -1249,6 +1408,18 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     const pathname = normalizePath(url.pathname);
+    const isApiRequest = pathname.startsWith("/api/");
+
+    if (isApiRequest && request.method === "OPTIONS") {
+      const cors = buildCorsHeaders(request, env);
+      if (!cors && request.headers.get("Origin")) {
+        return json({ ok: false, error: "Origin not allowed" }, { status: 403 });
+      }
+      return new Response(null, {
+        status: 204,
+        headers: cors || undefined,
+      });
+    }
 
     // Try static assets first (CSS/JS/images in ./public)
     if (request.method === "GET") {
@@ -1260,43 +1431,53 @@ export default {
       }
     }
 
-    // Pages
-    if (pathname === "/") return handleHome(request, env);
-    if (pathname === "/about") return handleAbout(request, env);
-    if (pathname === "/ai") return handleAi(request, env);
-    if (pathname === "/admin") return handleAdmin(request, env);
-    if (pathname.startsWith("/posts/")) {
+    let response: Response;
+
+    if (pathname === "/") {
+      response = await handleHome(request, env);
+    } else if (pathname === "/about") {
+      response = await handleAbout(request, env);
+    } else if (pathname === "/ai") {
+      response = await handleAi(request, env);
+    } else if (pathname === "/admin") {
+      response = await handleAdmin(request, env);
+    } else if (pathname === "/rss.xml") {
+      response = await handleRss(request, env);
+    } else if (pathname === "/atom.xml") {
+      response = await handleAtom(request, env);
+    } else if (pathname.startsWith("/posts/")) {
       const slug = pathname.slice("/posts/".length);
-      return handlePost(request, env, slug);
-    }
-
-    // API
-    if (pathname === "/api/posts") {
-      if (request.method === "GET") return handleApiListPosts(request, env);
-      if (request.method === "POST") return handleApiCreatePost(request, env);
-      return json({ ok: false, error: "Method Not Allowed" }, { status: 405 });
-    }
-
-    if (pathname.startsWith("/api/posts/")) {
+      response = await handlePost(request, env, slug);
+    } else if (pathname === "/api/posts") {
+      if (request.method === "GET") response = await handleApiListPosts(request, env);
+      else if (request.method === "POST") response = await handleApiCreatePost(request, env);
+      else response = json({ ok: false, error: "Method Not Allowed" }, { status: 405 });
+    } else if (pathname.startsWith("/api/posts/")) {
       const slug = pathname.slice("/api/posts/".length);
-      if (!slug) return json({ ok: false, error: "Not Found" }, { status: 404 });
-      if (request.method === "GET") return handleApiGetPost(request, env, slug);
-      if (request.method === "PUT") return handleApiUpdatePost(request, env, slug);
-      if (request.method === "DELETE") return handleApiDeletePost(request, env, slug);
-      return json({ ok: false, error: "Method Not Allowed" }, { status: 405 });
-    }
-
-    if (pathname === "/api/admin/bootstrap") return handleApiAdminBootstrap(request, env);
-    if (pathname === "/api/admin/session") return handleApiAdminSession(request, env);
-    if (pathname === "/api/admin/login") return handleApiAdminLogin(request, env);
-    if (pathname === "/api/admin/logout") return handleApiAdminLogout(request);
-    if (pathname === "/api/admin/site-config") return handleApiAdminSiteConfig(request, env);
-    if (pathname === "/api/admin/nav") return handleApiAdminNavCollection(request, env);
-    if (pathname.startsWith("/api/admin/nav/")) {
+      if (!slug) response = json({ ok: false, error: "Not Found" }, { status: 404 });
+      else if (request.method === "GET") response = await handleApiGetPost(request, env, slug);
+      else if (request.method === "PUT") response = await handleApiUpdatePost(request, env, slug);
+      else if (request.method === "DELETE") response = await handleApiDeletePost(request, env, slug);
+      else response = json({ ok: false, error: "Method Not Allowed" }, { status: 405 });
+    } else if (pathname === "/api/admin/bootstrap") {
+      response = await handleApiAdminBootstrap(request, env);
+    } else if (pathname === "/api/admin/session") {
+      response = await handleApiAdminSession(request, env);
+    } else if (pathname === "/api/admin/login") {
+      response = await handleApiAdminLogin(request, env);
+    } else if (pathname === "/api/admin/logout") {
+      response = await handleApiAdminLogout(request);
+    } else if (pathname === "/api/admin/site-config") {
+      response = await handleApiAdminSiteConfig(request, env);
+    } else if (pathname === "/api/admin/nav") {
+      response = await handleApiAdminNavCollection(request, env);
+    } else if (pathname.startsWith("/api/admin/nav/")) {
       const id = pathname.slice("/api/admin/nav/".length);
-      return handleApiAdminNavItem(request, env, id);
+      response = await handleApiAdminNavItem(request, env, id);
+    } else {
+      response = await notFoundPage(env);
     }
 
-    return notFoundPage(env);
+    return isApiRequest ? applyCors(request, env, response) : response;
   },
 };
